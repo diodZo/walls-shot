@@ -30,6 +30,9 @@ python tools/ui_slice.py assets/interface
 ```
 Si cambias una hoja manteniendo la disposición de las piezas, basta con volver a ejecutarlo.
 
+## Música
+Los temas de `assets/music/` (generados con Suno) suenan según la pantalla: menú, expediente, niveles 1–3, nivel 4, nivel 5 (jefe final), victoria y game over. Los temas en bucle vuelven a empezar con un fundido cruzado antes de su final. El volumen de cada tema y la duración del fundido se ajustan en la tabla `MUSIC` de `scripts/main.gd`; el volumen general de la música, en `MUSIC_DB`. La tecla M y el botón SONIDO silencian también la música.
+
 ## Efectos de sonido
 Los `.wav` de `assets/sfx/` se generan con `python tools/sfx.py assets/sfx` (requiere numpy). Para usar un sonido propio, reemplaza el archivo con el mismo nombre; el volumen relativo de cada uno se ajusta en `SFX` (`scripts/main.gd`).
 

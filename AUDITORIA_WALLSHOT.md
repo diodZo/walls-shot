@@ -200,6 +200,34 @@ Además, el editor carga sin errores y la ejecución de 120 fotogramas pasa sin 
 
 ---
 
+## 4 quinquies. Música
+
+- **Temas:** 7 temas de `assets/music/` (MP3, 48 kHz, generados con Suno).
+  - Volumen medido entre −14,3 y −16,2 LUFS, igualado con ±2 dB por tema en `MUSIC`.
+  - La música va a −9 dB respecto a los efectos (`MUSIC_DB`).
+- **Asignación:**
+
+  | Pantalla | Tema | Reproducción |
+  |---|---|---|
+  | Menú | `principal_menu` | bucle |
+  | Expediente | `boss_presentation` | bucle |
+  | Niveles 1–3 | `levels_to_1_at_3` | bucle |
+  | Nivel 4 | `levels_to_4_at_5` | bucle |
+  | Nivel 5 | `final_boss` | bucle |
+  | Victoria | `victory` | una vez |
+  | Game over | `game_over` | una vez (72 s) |
+
+- **Bucle con fundido cruzado:** los temas acaban con un desvanecimiento de 1–4 s, así que el bucle no usa el `loop` del stream. Se alternan dos `AudioStreamPlayer` y el tema vuelve a empezar `xfade` segundos antes de su final.
+  - Cada reproductor tiene un único `Tween` activo, para que un fundido de salida pendiente no apague el tema nuevo si se cambia de pantalla rápido.
+  - Reintentar el mismo nivel no reinicia el tema.
+- **Cierre ordenado:** `NOTIFICATION_WM_CLOSE_REQUEST` → `quit_cleanly()` detiene el audio y espera 0,15 s antes de salir. Si no, el servidor de audio retenía la reproducción MP3 y Godot avisaba de recursos sin liberar. La marca `quitting` impide que `update_music()` vuelva a arrancar el tema durante esa espera.
+  - Con `--quit-after`, que fuerza la salida sin pasar por la ventana, el aviso sigue apareciendo. Es propio de esa forma de cierre, no del juego.
+- **No verificado:** cómo suena la mezcla real y lo perceptible que es el empalme del bucle. La lógica sí está probada, pero el oído no.
+
+**Pruebas:** 161/161. Quince son nuevas: el tema de cada pantalla, que no se reinicie al reintentar, el bucle con fundido cruzado, el silencio y su reactivación, los cambios rápidos de pantalla y que la música no se rearranque al cerrar.
+
+---
+
 ## 5. Preparación para móviles (análisis, sin cambios aplicados)
 
 | Tema | Situación actual | Acción necesaria |

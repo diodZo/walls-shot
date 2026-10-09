@@ -63,12 +63,13 @@ func _initialize() -> void:
 	# Detiene los sonidos y libera las instancias del juego antes de salir: el servidor de audio
 	# retiene las reproducciones en curso unos fotogramas y, si no, quedan como fugas al cerrar.
 	for child in root.get_children():
+		if "quitting" in child:
+			child.quitting = true # que la música no vuelva a arrancar durante la espera
 		for player in child.find_children("*", "AudioStreamPlayer", true, false):
 			player.stop()
 			player.stream = null
 		child.queue_free()
-	for i in 10:
-		await process_frame
+	await create_timer(0.2).timeout # el servidor de audio tarda unos ciclos en soltar las MP3
 	if save_backup == null:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	else:
@@ -367,6 +368,84 @@ func run_tests() -> void:
 	check(not game.overlay_medals[0].get_parent().visible and game.overlay_title.visible, "game over: sin medallas")
 	var styled := game.fire_button.get_theme_stylebox("normal") is StyleBoxTexture
 	check(styled, "botones con la textura metálica del tema")
+
+	# --- Música por pantalla, bucle con fundido cruzado y silencio ---
+	var music_ok := true
+	for track in game.MUSIC:
+		var stream: AudioStream = game.MUSIC[track]["stream"]
+		if stream == null or stream.get_length() <= 5.0:
+			music_ok = false
+			print("   música inválida: ", track)
+	check(music_ok and game.MUSIC.size() == 7, "los 7 temas cargan y tienen duración")
+	game.sound_enabled = true
+	game.go_menu()
+	game._process(1.0 / 60.0)
+	check(game.music_track == "menu", "menú: suena el tema del menú")
+	game.level = 4
+	game.briefed_level = 0
+	game.start_stage()
+	game._process(1.0 / 60.0)
+	check(game.music_track == "briefing", "expediente: suena la presentación del jefe")
+	var expected := {1:"levels_a", 3:"levels_a", 4:"levels_b", 5:"boss"}
+	for lvl in expected:
+		fresh(game, lvl, 0)
+		game._process(1.0 / 60.0)
+		check(game.music_track == expected[lvl], "nivel %d: suena %s" % [lvl, expected[lvl]])
+	var active: AudioStreamPlayer = game.music_players[game.music_active]
+	var stream_before: AudioStream = active.stream
+	game.start_stage() # reintentar: mismo tema, no debe reiniciarse
+	game._process(1.0 / 60.0)
+	check(game.music_players[game.music_active] == active and active.stream == stream_before, "reintentar no reinicia la música")
+	# Bucle: al acercarse al final, el tema vuelve a empezar en el otro reproductor con fundido.
+	for i in 60:
+		game._process(1.0 / 60.0) # termina el fundido de entrada
+		await process_frame
+	var length: float = active.stream.get_length()
+	active.seek(length - 0.5)
+	await process_frame
+	game._process(1.0 / 60.0)
+	var next_player: AudioStreamPlayer = game.music_players[1 - game.music_players.find(active)]
+	check(game.music_looping and next_player.playing and next_player.stream == stream_before and next_player.get_playback_position() < 1.0, "cerca del final, el tema vuelve a empezar con fundido cruzado")
+	game.toggle_sound()
+	var any_music := false
+	for player in game.music_players:
+		if player.playing:
+			any_music = true
+	check(not any_music and game.music_track == "", "SONIDO desactivado también calla la música")
+	game.toggle_sound()
+	game._process(1.0 / 60.0)
+	check(game.music_track == "boss", "al reactivar el sonido vuelve la música de la pantalla")
+	game.walls.clear()
+	game.enemy_hp = 1
+	game.shield_open = true
+	hit_center(game)
+	var mguard := 0
+	while game.status == "dying" and mguard < 300:
+		mguard += 1
+		game._process(1.0 / 60.0)
+	game._process(1.0 / 60.0)
+	check(game.music_track == "victory", "victoria: suena el tema de victoria")
+	game.lose_stage()
+	game._process(1.0 / 60.0)
+	check(game.music_track == "game_over", "game over: suena su tema")
+	# Cambios rápidos de pantalla: el fundido de salida pendiente no debe apagar el tema nuevo.
+	game.go_menu()
+	game._process(1.0 / 60.0)
+	game.level = 2
+	game.briefed_level = 0
+	game.start_stage()
+	game._process(1.0 / 60.0)
+	game.begin_stage()
+	game._process(1.0 / 60.0)
+	for i in 50:
+		game._process(1.0 / 60.0)
+		await process_frame
+	check(game.music_players[game.music_active].playing and game.music_track == "levels_a", "cambios rápidos de pantalla no dejan la música apagada")
+	game.quitting = true # lo que hace quit_cleanly() al cerrar la ventana (sin salir de verdad)
+	game.stop_music()
+	game._process(1.0 / 60.0)
+	check(game.music_track == "" and not game.music_players[0].playing and not game.music_players[1].playing, "al cerrar, la música no vuelve a arrancar")
+	game.quitting = false
 
 	# --- Escudo bloquea ---
 	fresh(game, 3, 0)

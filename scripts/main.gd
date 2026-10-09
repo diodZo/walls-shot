@@ -40,6 +40,21 @@ const SFX := {
 	"game_over": {"stream":preload("res://assets/sfx/game_over.wav"), "db":-3.0}
 }
 const SHOT_SOUNDS := ["shot_pistol", "shot_rifle", "shot_plasma"] # por índice "sprite" de WEAPONS
+# Música (assets/music/). "db" iguala el volumen entre temas; "xfade" son los segundos de fundido cruzado
+# con que el tema vuelve a empezar antes de su final (los temas acaban con un desvanecimiento);
+# 0 = se reproduce una sola vez.
+const MUSIC := {
+	"menu": {"stream":preload("res://assets/music/principal_menu.mp3"), "db":-1.0, "xfade":4.0},
+	"briefing": {"stream":preload("res://assets/music/boss_presentation.mp3"), "db":-2.0, "xfade":1.0},
+	"levels_a": {"stream":preload("res://assets/music/levels_to_1_at_3.mp3"), "db":0.0, "xfade":1.0},
+	"levels_b": {"stream":preload("res://assets/music/levels_to_4_at_5.mp3"), "db":2.0, "xfade":1.0},
+	"boss": {"stream":preload("res://assets/music/final_boss.mp3"), "db":1.0, "xfade":1.5},
+	"victory": {"stream":preload("res://assets/music/victory.mp3"), "db":2.0, "xfade":0.0},
+	"game_over": {"stream":preload("res://assets/music/game_over.mp3"), "db":-1.0, "xfade":0.0}
+}
+const MUSIC_DB := -9.0 # la música queda por debajo de los efectos
+const MUSIC_FADE := 0.6 # fundido al cambiar de tema
+const SILENT_DB := -60.0
 const SFX_VOICES := 8
 # Sensación de impacto: congelación breve del juego (hit-stop, s) y sacudida del escenario (px).
 const HITSTOP_ENEMY := 0.06
@@ -223,6 +238,11 @@ var sfx_next := 0
 var last_sfx := "" # último efecto pedido (útil para depurar y para las pruebas)
 var hitstop_time := 0.0
 var shake := 0.0
+var music_players: Array[AudioStreamPlayer] = [] # dos reproductores que se alternan para los fundidos
+var music_active := 0 # índice del reproductor que suena ahora
+var music_track := "" # tema actual ("" = ninguno)
+var music_looping := false # true mientras se hace el fundido cruzado de vuelta al inicio
+var quitting := false
 var overlay_logo: TextureRect
 var overlay_medals: Array[TextureRect] = []
 var ammo_slots: Array[TextureRect] = []
@@ -233,6 +253,7 @@ var briefing_time := 0.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	get_tree().auto_accept_quit = false # el cierre de ventana pasa por quit_cleanly()
 	# draw_wall_rect() muestrea una región mayor que la textura del muro: necesita repetición.
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	load_game()
@@ -240,6 +261,10 @@ func _ready() -> void:
 		var player := AudioStreamPlayer.new()
 		add_child(player)
 		sfx_players.append(player)
+	for i in range(2):
+		var player := AudioStreamPlayer.new()
+		add_child(player)
+		music_players.append(player)
 	theme = build_theme()
 	build_ui()
 	reset_stage()
@@ -279,6 +304,22 @@ func ui_box(tex: Texture2D, margin: Vector2, content: Vector2) -> StyleBoxTextur
 	box.content_margin_top = content.y
 	box.content_margin_bottom = content.y
 	return box
+
+# Cierre ordenado: si el juego sale con música sonando, el servidor de audio aún retiene la
+# reproducción y Godot avisa de recursos sin liberar. Se detiene el audio, se espera a que el
+# servidor de audio la suelte (0,15 s; unos fotogramas no bastan con MP3) y entonces se sale.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		quit_cleanly()
+
+func quit_cleanly() -> void:
+	quitting = true # evita que update_music() vuelva a arrancar el tema mientras se espera
+	stop_music()
+	for player in sfx_players + music_players:
+		player.stop()
+		player.stream = null
+	await get_tree().create_timer(0.15).timeout
+	get_tree().quit()
 
 func build_ui() -> void:
 	# Chapa de fondo de toda la zona de controles, bajo el escenario.
@@ -625,6 +666,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	var dt: float = minf(delta, 0.033)
+	update_music() # antes del hit-stop: la música no se congela
 	if status == "briefing":
 		briefing_time += dt
 		dossier.queue_redraw()
@@ -798,8 +840,88 @@ func toggle_sound() -> void:
 	if not sound_enabled:
 		for player in sfx_players:
 			player.stop()
+		stop_music()
 	save_game()
 	refresh_ui()
+
+# Tema que corresponde al estado actual del juego.
+func desired_music() -> String:
+	match status:
+		"menu":
+			return "menu"
+		"briefing":
+			return "briefing"
+		"play", "dying":
+			return "levels_a" if level <= 3 else ("levels_b" if level == 4 else "boss")
+		"win":
+			return "victory"
+		"lose":
+			return "game_over"
+	return ""
+
+func update_music() -> void:
+	if not sound_enabled or quitting or music_players.is_empty():
+		return
+	var wanted: String = desired_music()
+	if wanted != music_track:
+		play_music(wanted)
+		return
+	if music_track == "" or music_looping:
+		return
+	# Bucle con fundido cruzado: el tema vuelve a empezar "xfade" segundos antes de acabar.
+	var xfade: float = float(MUSIC[music_track]["xfade"])
+	var current: AudioStreamPlayer = music_players[music_active]
+	if xfade > 0.0 and current.playing and current.get_playback_position() >= current.stream.get_length() - xfade:
+		music_looping = true
+		crossfade_to(music_track, xfade)
+
+func play_music(track: String) -> void:
+	music_track = track
+	music_looping = false
+	if track == "":
+		fade_out(music_players[music_active], MUSIC_FADE)
+		return
+	crossfade_to(track, MUSIC_FADE)
+
+# Arranca "track" desde el principio en el reproductor libre y funde con el que sonaba.
+func crossfade_to(track: String, duration: float) -> void:
+	var old: AudioStreamPlayer = music_players[music_active]
+	music_active = 1 - music_active
+	var player: AudioStreamPlayer = music_players[music_active]
+	player.stream = MUSIC[track]["stream"]
+	player.volume_db = SILENT_DB
+	player.play()
+	var tween := music_tween(player)
+	tween.tween_property(player, "volume_db", MUSIC_DB + float(MUSIC[track]["db"]), duration)
+	tween.tween_callback(func(): music_looping = false)
+	if old.playing:
+		fade_out(old, duration)
+
+func fade_out(player: AudioStreamPlayer, duration: float) -> void:
+	var tween := music_tween(player)
+	tween.tween_property(player, "volume_db", SILENT_DB, duration)
+	tween.tween_callback(player.stop)
+
+# Un solo fundido activo por reproductor: si se cambia de tema rápido, el fundido de salida
+# anterior no debe apagar el tema nuevo que ahora suena en ese mismo reproductor.
+func music_tween(player: AudioStreamPlayer) -> Tween:
+	if player.has_meta("tween"):
+		var previous: Tween = player.get_meta("tween")
+		if previous != null and previous.is_valid():
+			previous.kill()
+	var tween := create_tween()
+	player.set_meta("tween", tween)
+	return tween
+
+func stop_music() -> void:
+	for player in music_players:
+		if player.has_meta("tween"):
+			var previous: Tween = player.get_meta("tween")
+			if previous != null and previous.is_valid():
+				previous.kill()
+		player.stop()
+	music_track = ""
+	music_looping = false
 
 # Fotograma de una animación tras "t" segundos, o -1 si no existe, está inactiva o ya terminó.
 func frame_at(anim: Variant, t: float) -> int:
