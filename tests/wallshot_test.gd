@@ -55,10 +55,20 @@ func fresh(game: Node, lvl: int, weapon: int) -> void:
 	game.owned = [0, 1, 2, 3]
 	game.equipped = weapon
 	game.start_stage()
+	game.begin_stage() # salta el expediente si el nivel es nuevo
 
 func _initialize() -> void:
 	var save_backup: Variant = FileAccess.get_file_as_string(SAVE_PATH) if FileAccess.file_exists(SAVE_PATH) else null
 	await run_tests()
+	# Detiene los sonidos y libera las instancias del juego antes de salir: el servidor de audio
+	# retiene las reproducciones en curso unos fotogramas y, si no, quedan como fugas al cerrar.
+	for child in root.get_children():
+		for player in child.find_children("*", "AudioStreamPlayer", true, false):
+			player.stop()
+			player.stream = null
+		child.queue_free()
+	for i in 10:
+		await process_frame
 	if save_backup == null:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	else:
@@ -219,6 +229,145 @@ func run_tests() -> void:
 			game._process(1.0 / 60.0)
 		check(rseen.size() == 4 and order_ok and game.weapon_reload_frame() == -1, "arma %d: recarga recorre 4 fotogramas en orden y termina" % weapon)
 
+	# --- Sonido, hit-stop y sacudida ---
+	var sfx_ok := true
+	for sound in game.SFX:
+		var stream: AudioStream = game.SFX[sound]["stream"]
+		if stream == null or stream.get_length() <= 0.0:
+			sfx_ok = false
+			print("   sfx inválido: ", sound)
+	check(sfx_ok and game.SFX.size() == 14, "los 14 efectos de sonido cargan y tienen duración")
+	game.sound_enabled = true
+	for weapon in [0, 2, 3]:
+		fresh(game, 1, weapon)
+		game.fire()
+		check(game.last_sfx == game.SHOT_SOUNDS[int(game.WEAPONS[weapon]["sprite"])], "arma %d: suena su disparo (%s)" % [weapon, game.last_sfx])
+	fresh(game, 3, 0)
+	game.walls.clear()
+	game.shield_open = true
+	hit_center(game)
+	check(game.last_sfx == "enemy_hit" and game.hitstop_time > 0.0 and game.shake > 0.0, "impacto al jefe: sonido, hit-stop y sacudida")
+	var t_before: float = game.elapsed
+	game._process(1.0 / 60.0)
+	check(game.elapsed == t_before, "hit-stop congela el juego")
+	for i in 3:
+		await process_frame # dibuja con sacudida activa
+	for i in 10:
+		game._process(1.0 / 60.0)
+	check(game.elapsed > t_before and game.hitstop_time == 0.0, "el juego se reanuda tras el hit-stop")
+	for i in 30:
+		game._process(1.0 / 60.0)
+	check(game.shake == 0.0, "la sacudida se desvanece")
+	game.shield_open = false
+	hit_center(game)
+	check(game.last_sfx == "shield", "escudo: suena el bloqueo")
+	game.shield_open = true
+	hit_center(game)
+	check(game.status == "dying" and game.last_sfx == "explosion" and game.shake >= game.SHAKE_DEATH - 0.01, "muerte: explosión y sacudida fuerte")
+	var vguard := 0
+	while game.status == "dying" and vguard < 300:
+		vguard += 1
+		game._process(1.0 / 60.0)
+	check(game.status == "win" and game.last_sfx == "victory", "victoria: suena el jingle")
+	fresh(game, 1, 0)
+	var wall0: Dictionary = game.walls[0]
+	for k in 2:
+		wall0["center"] = game.LINE_Y + 200.0
+		game.bullet = {"x":float(wall0["x"]) - 8.0, "y":game.LINE_Y, "speed":660.0, "damage":1, "pierce":0, "ignored":[]}
+		game.move_bullet(0.033)
+		check(game.last_sfx == ("wall_hit" if k == 0 else "wall_break"), "muro: impacto %d suena %s" % [k + 1, game.last_sfx])
+	check(game.shake > 0.0 and game.hitstop_time > 0.0, "muro destruido: sacudida y hit-stop")
+	fresh(game, 1, 0)
+	game.reload_weapon()
+	check(game.last_sfx == "reload", "recarga: suena al empezar")
+	for i in 90:
+		game._process(1.0 / 60.0)
+	check(game.last_sfx == "reload_done", "recarga: suena al terminar")
+	fresh(game, 1, 1)
+	game.special()
+	check(game.last_sfx == "ability", "habilidad: suena al activarse")
+	game.lose_stage()
+	check(game.last_sfx == "game_over", "game over: suena el jingle")
+	game.toggle_sound()
+	check(not game.sound_enabled and game.sound_button.text.ends_with("NO"), "botón SONIDO desactiva el sonido")
+	var muted: Node = load("res://scenes/main.tscn").instantiate()
+	root.add_child(muted)
+	await process_frame
+	check(not muted.sound_enabled, "el sonido desactivado se guarda y se carga")
+	muted.queue_free()
+	game.play_sfx("buy")
+	var any_playing := false
+	for player in game.sfx_players:
+		if player.playing:
+			any_playing = true
+	check(not any_playing, "sin sonido no se reproduce nada")
+	game.toggle_sound()
+	check(game.sound_enabled, "botón SONIDO lo vuelve a activar")
+
+	# --- Interfaz Guerra Fría: menú, expediente, HUD y medallas ---
+	game.go_menu()
+	check(game.status == "menu" and game.overlay_logo.visible and not game.overlay_title.visible, "menú: placa WALLSHOT sobre el búnker")
+	await process_frame
+	game.level = 2
+	game.overlay_start.pressed.emit()
+	check(game.status == "briefing" and game.dossier.visible and not game.overlay_panel.visible, "JUGAR desde el menú abre el expediente")
+	game.fire()
+	check(game.bullet.is_empty() and game.shots == 0, "no se dispara durante el expediente")
+	for i in 5:
+		game._process(1.0 / 60.0)
+		await process_frame # dibuja el expediente a medio escribir
+	check(game.briefing_chars() > 0 and game.briefing_chars() < game.dossier_total_chars(), "el expediente se escribe progresivamente")
+	var space := InputEventKey.new()
+	space.keycode = KEY_SPACE
+	space.pressed = true
+	game._unhandled_input(space)
+	check(game.status == "briefing" and game.briefing_chars() >= game.dossier_total_chars(), "primer ESPACIO completa el texto")
+	await process_frame
+	game._unhandled_input(space)
+	check(game.status == "play" and not game.dossier.visible and game.shots == 0, "segundo ESPACIO empieza el nivel sin disparar")
+	game.start_stage()
+	check(game.status == "play", "reintentar el mismo nivel no repite el expediente")
+	var lines: Array = game.dossier_lines()
+	check(lines[1] == "DRONE VISOR" and lines[0] == "EXPEDIENTE 02", "expediente con los datos del objetivo")
+	for lvl in [1, 3, 4, 5]:
+		game.level = lvl
+		game.briefed_level = 0
+		game.start_stage()
+		game.briefing_time = 99.0
+		await process_frame
+		game.begin_stage()
+	check(true, "expediente dibujado en los 5 niveles sin errores")
+	fresh(game, 1, 2)
+	var visible_ammo := 0
+	for slot in game.ammo_slots:
+		if slot.visible:
+			visible_ammo += 1
+	check(visible_ammo == 14 and game.ammo_slots[0].texture == game.UI_TEX["bullet_full"], "HUD: 14 balas del rifle, todas llenas")
+	game.fire()
+	game.bullet.clear()
+	check(game.ammo_slots[13].texture == game.UI_TEX["bullet_spent"] and game.ammo_slots[12].texture == game.UI_TEX["bullet_full"], "HUD: la bala disparada aparece gastada")
+	var reload_visible := 0
+	for slot in game.reload_slots:
+		if slot.visible:
+			reload_visible += 1
+	check(reload_visible == game.reloads_left, "HUD: un cartucho plateado por cargador de reserva")
+	fresh(game, 1, 0)
+	game.walls.clear()
+	game.shots = 1
+	hit_center(game)
+	var lit := 0
+	for medal in game.overlay_medals:
+		if medal.modulate == Color.WHITE:
+			lit += 1
+	check(game.status == "win" and game.overlay_medals[0].get_parent().visible and lit == int(game.stars["1"]), "victoria: medallas encendidas según estrellas (%d)" % lit)
+	game.stars["1"] = 3
+	game.refresh_ui()
+	check(game.level_box.get_item_icon(0) == game.MEDALS_SMALL[2], "selector de nivel: medalla de oro con 3 estrellas")
+	game.lose_stage()
+	check(not game.overlay_medals[0].get_parent().visible and game.overlay_title.visible, "game over: sin medallas")
+	var styled := game.fire_button.get_theme_stylebox("normal") is StyleBoxTexture
+	check(styled, "botones con la textura metálica del tema")
+
 	# --- Escudo bloquea ---
 	fresh(game, 3, 0)
 	game.walls.clear()
@@ -289,6 +438,7 @@ func run_tests() -> void:
 			attempts += 1
 			game.level = lvl
 			game.start_stage()
+			game.begin_stage()
 			guard = 0
 			while (game.status == "play" or game.status == "dying") and guard < 6000:
 				guard += 1
@@ -305,7 +455,8 @@ func run_tests() -> void:
 			check(game.overlay_start.pressed.is_connected(game.next_stage), "botón pasa a SIGUIENTE NIVEL")
 	check(game.coins > 0 and game.stars.size() == cleared, "monedas y estrellas otorgadas")
 	game.overlay_start.pressed.emit()
-	check(game.level == 1 and game.status == "play", "tras nivel 5 vuelve al nivel 1")
+	check(game.level == 1 and game.status == "briefing", "tras nivel 5 vuelve al nivel 1 (con su expediente)")
+	game.begin_stage()
 
 	# --- Guardado ---
 	var coins_before: int = game.coins

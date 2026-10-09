@@ -163,6 +163,43 @@ Además, el editor carga sin errores y la ejecución de 120 fotogramas pasa sin 
 
 ---
 
+## 4 ter. Sonido, hit-stop y sacudida
+
+- **Sonido:** 14 efectos retro sintetizados con `tools/sfx.py` (`assets/sfx/*.wav`, 256 KB en total). Cubren el disparo de cada arma, el impacto y la rotura de muros, el impacto al jefe, el bloqueo del escudo, la explosión, la recarga (inicio y fin), la habilidad, la compra, la victoria y el game over.
+  - Se reproducen en un grupo de 8 voces, con una variación de tono de ±5 %.
+  - El volumen relativo de cada efecto se ajusta en la tabla `SFX`.
+  - Se pueden silenciar con la tecla M o el botón SONIDO. El ajuste se guarda (`"sound"` en el JSON de guardado; si un guardado antiguo no lo tiene, el sonido queda activado).
+- **Hit-stop:** el juego se congela 0,06 s al dañar al jefe, 0,04 s al romper un muro y 0,12 s al matar al jefe.
+- **Sacudida:** solo se desplaza el escenario, no la UI. Es de 5 px al impactar al jefe, 4 px al romper un muro y 11 px al matarlo (el desplazamiento real se limita a 8 px), y decae a 40 px/s. El fondo y el suelo se dibujan con 8 px de margen para que no aparezcan bordes vacíos. El aviso de texto no tiembla.
+- **No verificado:** cómo suenan los efectos y cómo se ve la sacudida. Las pruebas comprueban la lógica, pero no la percepción.
+
+**Pruebas:** 130/130. Veintidós son nuevas: los sonidos de cada evento, que el hit-stop congela y reanuda el juego, que la sacudida decae y que el sonido se puede silenciar y queda guardado. Las pruebas detienen ahora el audio antes de salir; si no, el servidor de audio retenía reproducciones y aparecían avisos de fugas al cerrar.
+
+---
+
+## 4 quater. Interfaz estilo Guerra Fría
+
+- **Piezas de interfaz:** `tools/ui_slice.py` recorta las hojas de `assets/interface/` y las reduce con filtro BOX a su tamaño de uso, guardándolas en `assets/interface/game/`. También borra el texto «PLAY» incrustado en los botones, rellenando cada fila de la placa con su propio color. Los originales no se modifican.
+- **Tema (`build_theme()`):**
+  - Botones y desplegables con la chapa metálica en 4 estados, como StyleBoxTexture 9-slice, y letras doradas con contorno.
+  - Paneles de victoria y game over con la chapa grande.
+  - La zona de controles inferior va sobre la chapa pequeña.
+- **HUD de fósforo:** balas llenas y gastadas según la munición del cargador, cargadores de reserva como balas plateadas y los datos en verde.
+- **Menú:** el fondo del búnker con el mapa ocupa el escenario, con la placa WALLSHOT encima.
+- **Expediente CLASIFICADO:** aparece al entrar en un nivel nuevo, ya sea desde el menú, en el siguiente nivel o con el selector. No se repite al reintentar.
+  - Muestra la foto del objetivo, su nombre, una franja roja de amenaza por nivel y observaciones derivadas de sus estadísticas, con efecto máquina de escribir.
+  - El primer clic o ESPACIO completa el texto y el segundo empieza el nivel.
+  - Nuevo estado `briefing`.
+- **Medallas:** en la victoria se muestran bronce, plata y oro, y las no conseguidas aparecen apagadas. En el selector de niveles, la medalla de la mejor marca sustituye al emoji 🔒/✓, que podía no verse.
+- **Mira verde:** cuatro esquinas alrededor del área de impacto del objetivo durante la partida.
+- **Verificado visualmente** con capturas en ventana real del menú, el expediente, la partida, la victoria y el game over.
+- **Sin usar todavía:** el medidor de aguja (trae la aguja dibujada; habría que borrarla para animarla) y el marco verde grande.
+- **Pendiente:** los originales de `assets/interface/*.png` (8 MB) entran en la exportación aunque el juego no los usa. Conviene moverlos a una carpeta con `.gdignore` o excluirlos en el preset de exportación.
+
+**Pruebas:** 146/146. Dieciséis son nuevas y cubren la interfaz: menú, expediente (escritura, avance, que no se dispara durante él y que no se repite al reintentar), balas del HUD, medallas, iconos del selector y tema aplicado.
+
+---
+
 ## 5. Preparación para móviles (análisis, sin cambios aplicados)
 
 | Tema | Situación actual | Acción necesaria |

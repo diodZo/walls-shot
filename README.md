@@ -11,6 +11,7 @@ Proyecto nativo Godot 4 basado en las mecánicas de WALLSHOT 6.0 HTML5.
 - Clic en campo de juego, barra espaciadora o botón DISPARAR: disparar.
 - R: recargar.
 - E: habilidad del arma.
+- M o botón SONIDO: activar/desactivar el sonido (se guarda).
 - Botones y menús: selección de armas, compra y selección de niveles.
 
 ## Incluido
@@ -20,6 +21,17 @@ Proyecto nativo Godot 4 basado en las mecánicas de WALLSHOT 6.0 HTML5.
 - Cinco objetivos/enemigos, escudos y vida. Los jefes de los niveles 2–5 tienen animaciones de dolor y muerte.
 - Economía, monedas, estrellas y guardado en `user://wallshot_save.json`.
 - Recarga y pantallas de derrota/victoria.
+- Efectos de sonido retro, congelación breve al impactar (hit-stop) y sacudida del escenario.
+
+## Interfaz
+Las hojas de arte originales están en `assets/interface/`. El juego usa las piezas ya recortadas y reducidas de `assets/interface/game/`, que se regeneran con:
+```
+python tools/ui_slice.py assets/interface
+```
+Si cambias una hoja manteniendo la disposición de las piezas, basta con volver a ejecutarlo.
+
+## Efectos de sonido
+Los `.wav` de `assets/sfx/` se generan con `python tools/sfx.py assets/sfx` (requiere numpy). Para usar un sonido propio, reemplaza el archivo con el mismo nombre; el volumen relativo de cada uno se ajusta en `SFX` (`scripts/main.gd`).
 
 ## Pruebas
 ```
