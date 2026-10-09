@@ -1,0 +1,9 @@
+# Caché de importación y metadatos del editor de Godot 4 (se regeneran al abrir el proyecto)
+.godot/
+
+# Exportaciones y plantillas Android
+/android/
+/build/
+
+# Python (tools/)
+__pycache__/
