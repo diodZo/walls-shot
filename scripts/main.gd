@@ -200,7 +200,8 @@ var stars := {}
 var walls: Array[Dictionary] = []
 var bullet := {}
 var particles: Array[Dictionary] = []
-var shots := 0
+var shots := 0 # balas gastadas del cargador actual (vuelve a 0 al recargar)
+var total_shots := 0 # balas disparadas en todo el nivel: medallas, recompensa y Game Over
 var reloads_left := 1
 var reload_time := 0.0
 var elapsed := 0.0
@@ -487,6 +488,7 @@ func reset_stage() -> void:
 	particles.clear()
 	bullet.clear()
 	shots = 0
+	total_shots = 0
 	reloads_left = 2 if level >= 4 else 1
 	reload_time = 0.0
 	elapsed = 0.0
@@ -590,7 +592,8 @@ func choose_weapon(index: int) -> void:
 		play_sfx("buy")
 	equipped = index
 	# Equipar está permitido entre partidas; en plena partida reiniciamos el nivel para evitar recargas gratuitas.
-	if status == "play":
+	# En el expediente también: la munición y las habilidades del nivel dependen del arma.
+	if status == "play" or status == "briefing":
 		reset_stage()
 	save_game()
 	refresh_ui()
@@ -612,6 +615,7 @@ func fire() -> void:
 		reload_weapon()
 		return
 	shots += 1
+	total_shots += 1
 	bullet = {"x":125.0, "y":LINE_Y, "speed":float(w["speed"]), "damage":int(w["damage"]), "pierce":pierce_next, "ignored":[]}
 	pierce_next = 0
 	kick = 1.0
@@ -996,9 +1000,9 @@ func win_stage() -> void:
 	status = "win"
 	play_sfx("victory")
 	var threshold: int = int(WEAPONS[equipped]["ammo"])
-	var earned_stars := 3 if shots <= int(ceil(float(threshold) * 0.32)) else (2 if shots <= int(ceil(float(threshold) * 0.66)) else 1)
+	var earned_stars := 3 if total_shots <= int(ceil(float(threshold) * 0.32)) else (2 if total_shots <= int(ceil(float(threshold) * 0.66)) else 1)
 	stars[str(level)] = max(int(stars.get(str(level), 0)), earned_stars)
-	var award: int = 110 + level * 80 + max(0, threshold - shots) * 25 + (int(ENEMIES[level - 1]["hp"]) * 40)
+	var award: int = 110 + level * 80 + max(0, threshold - total_shots) * 25 + (int(ENEMIES[level - 1]["hp"]) * 40)
 	coins += award
 	score += award
 	unlocked = max(unlocked, min(5, level + 1))
@@ -1024,7 +1028,7 @@ func next_stage() -> void:
 func lose_stage() -> void:
 	status = "lose"
 	play_sfx("game_over")
-	show_overlay("GAME OVER", "Sin munición. Disparos: %d. Vida enemiga restante: %d/%d. ¡Inténtalo otra vez!" % [shots, enemy_hp, enemy_max_hp], "REINTENTAR")
+	show_overlay("GAME OVER", "Sin munición. Disparos: %d. Vida enemiga restante: %d/%d. ¡Inténtalo otra vez!" % [total_shots, enemy_hp, enemy_max_hp], "REINTENTAR")
 	refresh_ui()
 
 func notify(message: String) -> void:

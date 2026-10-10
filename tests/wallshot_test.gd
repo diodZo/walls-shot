@@ -366,6 +366,34 @@ func run_tests() -> void:
 	check(game.level_box.get_item_icon(0) == game.MEDALS_SMALL[2], "selector de nivel: medalla de oro con 3 estrellas")
 	game.lose_stage()
 	check(not game.overlay_medals[0].get_parent().visible and game.overlay_title.visible, "game over: sin medallas")
+	# Recargar no debe borrar los disparos del nivel: 8 + 1 balas son 1 estrella y sin bonus de munición.
+	fresh(game, 1, 0)
+	game.walls.clear()
+	for i in 8:
+		game.fire()
+		game.bullet.clear()
+	game.reload_weapon()
+	game.reload_time = 0.001
+	game._process(0.01)
+	game.fire()
+	game.bullet.clear()
+	var coins_pre: int = game.coins
+	hit_center(game)
+	lit = 0
+	for medal in game.overlay_medals:
+		if medal.modulate == Color.WHITE:
+			lit += 1
+	check(game.status == "win" and game.shots == 1 and game.total_shots == 9 and lit == 1, "victoria tras recargar: cuenta los 9 disparos (1 estrella)")
+	check(game.coins - coins_pre == 110 + 80 + 40, "victoria tras recargar: sin bonus por balas no disparadas")
+	# Comprar o cambiar de arma durante el expediente recalcula las habilidades del nivel.
+	game.level = 2
+	game.briefed_level = 0
+	game.equipped = 0
+	game.start_stage()
+	var no_ability: bool = game.abilities_left == 0
+	game.choose_weapon(1)
+	check(game.status == "briefing" and no_ability and game.abilities_left == 2, "cambio de arma en el expediente: habilidades del arma nueva")
+	game.begin_stage()
 	var styled := game.fire_button.get_theme_stylebox("normal") is StyleBoxTexture
 	check(styled, "botones con la textura metálica del tema")
 
