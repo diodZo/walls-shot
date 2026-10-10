@@ -10,7 +10,10 @@ extends RefCounted
 #   "texture"      Sprite del enemigo; null = diana dibujada por código (usa "hit" como hitbox).
 #   "hurt"/"death" Animaciones de dolor y muerte (formato abajo); null = sin animación.
 #   "phases"       Opcional: jefes que entran, uno tras otro, al morir el anterior (misma partida,
-#                  mismos muros y munición). Cada uno con name, hp, motion, shield, texture, hurt y death.
+#                  mismos muros y munición). Cada uno con name, hp, motion, shield, texture, hurt y death
+#                  (y "hit" si no tiene sprite). Opcionales: "notice" (aviso al entrar; por defecto
+#                  «¡NOMBRE ENTRA EN COMBATE!») y "add_walls" (muros que se levantan al entrar, mismo
+#                  formato que "walls").
 #   "zone"         Nombre del escenario en el expediente.
 #   "color"        Color de fondo del escenario.
 #   "music"        Tema de MUSIC (main.gd) durante la etapa.
@@ -31,11 +34,22 @@ extends RefCounted
 # vecino) y desde el 2.º ya no hay cara: se anclan por el centro de masa de cada fotograma.
 
 const LIST := [
-	{"id":"sudamerica-1", "name":"Blanco clásico", "hp":1, "motion":0, "shield":0, "hit":Vector2(62, 62),
+	# Chile, entrenamiento: tres blancos seguidos; con cada uno se levanta un muro más.
+	{"id":"sudamerica-1", "name":"Blanco de práctica", "hp":1, "motion":0, "shield":0, "hit":Vector2(62, 62),
 		"texture":null, "hurt":null, "death":null,
 		"zone":"Chile", "color":Color("#27425c"), "music":"levels_a", "threat":1, "reloads":1,
 		"walls":[
 			{"x":225.0, "speed":0.955, "amp":77.0, "gap":86.0, "phase":0.4, "hp":2, "breakable":true}
+		],
+		"phases":[
+			{"name":"Blanco de práctica 2", "hp":1, "motion":0, "shield":0, "hit":Vector2(62, 62),
+				"texture":null, "hurt":null, "death":null,
+				"notice":"BLANCO 2: SE LEVANTA OTRO MURO",
+				"add_walls":[{"x":450.0, "speed":1.15, "amp":77.0, "gap":86.0, "phase":1.85, "hp":3, "breakable":false}]},
+			{"name":"Blanco de práctica 3", "hp":1, "motion":0, "shield":0, "hit":Vector2(62, 62),
+				"texture":null, "hurt":null, "death":null,
+				"notice":"BLANCO 3: SE LEVANTA OTRO MURO",
+				"add_walls":[{"x":640.0, "speed":1.35, "amp":77.0, "gap":86.0, "phase":3.3, "hp":2, "breakable":true}]}
 		]},
 	{"id":"sudamerica-2", "name":"Jefe de Argentina", "hp":1, "motion":1, "shield":0,
 		"texture":preload("res://assets/boss_argentina.png"),
@@ -105,11 +119,88 @@ const LIST := [
 			{"x":423.0, "speed":1.935, "amp":105.0, "gap":62.0, "phase":3.3, "hp":3, "breakable":true},
 			{"x":522.0, "speed":2.215, "amp":105.0, "gap":62.0, "phase":4.75, "hp":3, "breakable":false},
 			{"x":621.0, "speed":2.495, "amp":105.0, "gap":62.0, "phase":6.2, "hp":3, "breakable":true}
+		]},
+	# --- Mundo 2: Asia ---
+	{"id":"asia-1", "name":"Mao Zedong", "hp":2, "motion":1, "shield":1,
+		"texture":preload("res://assets/china_boss.png"),
+		"hurt":{"texture":preload("res://assets/china_boss_pain.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 434, 724), Rect2(434, 0, 434, 724), Rect2(868, 0, 432, 724), Rect2(1300, 0, 435, 724), Rect2(1735, 0, 437, 724)],
+			"anchors":[Rect2(8, 132, 420, 456), Rect2(442, 136, 420, 456), Rect2(852, 136, 420, 456), Rect2(1296, 136, 420, 456), Rect2(1735, 136, 420, 456)]},
+		"death":{"texture":preload("res://assets/china_boss_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 417, 724), Rect2(417, 0, 435, 724), Rect2(852, 0, 439, 724), Rect2(1291, 0, 470, 724), Rect2(1761, 0, 411, 724)],
+			"anchors":[Rect2(-4, 156, 412, 448), Rect2(413, 140, 412, 448), Rect2(864, 152, 412, 448), Rect2(1287, 148, 412, 448), Rect2(1739, 144, 412, 448)]},
+		"zone":"China", "color":Color("#5a2a24"), "music":"levels_b", "threat":3, "reloads":1,
+		"walls":[
+			{"x":225.0, "speed":1.2, "amp":95.0, "gap":72.0, "phase":0.4, "hp":2, "breakable":true},
+			{"x":400.0, "speed":1.5, "amp":95.0, "gap":72.0, "phase":1.85, "hp":3, "breakable":false},
+			{"x":575.0, "speed":1.8, "amp":95.0, "gap":72.0, "phase":3.3, "hp":3, "breakable":true}
+		]},
+	{"id":"asia-2", "name":"Dinastía Kim", "hp":3, "motion":2, "shield":1,
+		"texture":preload("res://assets/korea.png"),
+		"hurt":{"texture":preload("res://assets/korea_dolor.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 444, 724), Rect2(444, 0, 427, 724), Rect2(871, 0, 426, 724), Rect2(1297, 0, 429, 724), Rect2(1726, 0, 446, 724)],
+			"anchors":[Rect2(12, 148, 424, 456), Rect2(460, 148, 424, 456), Rect2(891, 148, 424, 456), Rect2(1305, 148, 424, 456), Rect2(1734, 144, 424, 456)]},
+		"death":{"texture":preload("res://assets/korea_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 406, 724), Rect2(406, 0, 445, 724), Rect2(851, 0, 452, 724), Rect2(1303, 0, 508, 724), Rect2(1811, 0, 361, 724)],
+			"anchors":[Rect2(48, 204, 348, 372), Rect2(446, 184, 348, 372), Rect2(863, 224, 348, 372), Rect2(1355, 180, 348, 372), Rect2(1824, 170, 348, 372)]},
+		"zone":"Corea del Norte", "color":Color("#24324a"), "music":"levels_b", "threat":3, "reloads":2,
+		"walls":[
+			{"x":225.0, "speed":1.3, "amp":98.0, "gap":70.0, "phase":0.4, "hp":2, "breakable":true},
+			{"x":400.0, "speed":1.6, "amp":98.0, "gap":70.0, "phase":1.85, "hp":3, "breakable":false},
+			{"x":575.0, "speed":1.9, "amp":98.0, "gap":70.0, "phase":3.3, "hp":3, "breakable":true}
+		]},
+	{"id":"asia-3", "name":"Ho Chi Minh", "hp":3, "motion":1, "shield":1,
+		"texture":preload("res://assets/vietnam.png"),
+		"hurt":{"texture":preload("res://assets/vietnam_dolor.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 434, 724), Rect2(434, 0, 434, 724), Rect2(868, 0, 434, 724), Rect2(1302, 0, 435, 724), Rect2(1737, 0, 435, 724)],
+			"anchors":[Rect2(16, 116, 400, 516), Rect2(462, 112, 400, 516), Rect2(912, 116, 400, 516), Rect2(1318, 124, 400, 516), Rect2(1761, 112, 400, 516)]},
+		"death":{"texture":preload("res://assets/vietnam_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 383, 724), Rect2(383, 0, 462, 724), Rect2(845, 0, 452, 724), Rect2(1297, 0, 511, 724), Rect2(1808, 0, 364, 724)],
+			"anchors":[Rect2(0, 160, 364, 468), Rect2(403, 156, 364, 468), Rect2(849, 156, 364, 468), Rect2(1365, 165, 364, 468), Rect2(1795, 244, 364, 468)]},
+		"zone":"Vietnam", "color":Color("#2d4a2a"), "music":"levels_b", "threat":4, "reloads":2,
+		"walls":[
+			{"x":225.0, "speed":1.3, "amp":100.0, "gap":68.0, "phase":0.4, "hp":2, "breakable":true},
+			{"x":350.0, "speed":1.55, "amp":100.0, "gap":68.0, "phase":1.85, "hp":3, "breakable":false},
+			{"x":475.0, "speed":1.8, "amp":100.0, "gap":68.0, "phase":3.3, "hp":3, "breakable":true},
+			{"x":600.0, "speed":2.05, "amp":100.0, "gap":68.0, "phase":4.75, "hp":3, "breakable":false}
+		]},
+	{"id":"asia-4", "name":"Kaysone Phomvihane", "hp":3, "motion":1, "shield":2,
+		"texture":preload("res://assets/laos.png"),
+		"hurt":{"texture":preload("res://assets/laos_dolor.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 437, 724), Rect2(437, 0, 432, 724), Rect2(869, 0, 433, 724), Rect2(1302, 0, 435, 724), Rect2(1737, 0, 435, 724)],
+			"anchors":[Rect2(12, 144, 424, 488), Rect2(445, 144, 424, 488), Rect2(833, 144, 424, 488), Rect2(1290, 144, 424, 488), Rect2(1737, 144, 424, 488)]},
+		"death":{"texture":preload("res://assets/laos_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 417, 724), Rect2(417, 0, 454, 724), Rect2(871, 0, 414, 724), Rect2(1285, 0, 483, 724), Rect2(1768, 0, 404, 724)],
+			"anchors":[Rect2(12, 192, 372, 428), Rect2(405, 172, 372, 428), Rect2(855, 196, 372, 428), Rect2(1297, 168, 372, 428), Rect2(1769, 172, 372, 428)]},
+		"zone":"Laos", "color":Color("#4a3a1e"), "music":"levels_b", "threat":4, "reloads":2,
+		"walls":[
+			{"x":225.0, "speed":1.35, "amp":100.0, "gap":66.0, "phase":0.4, "hp":2, "breakable":true},
+			{"x":350.0, "speed":1.6, "amp":100.0, "gap":66.0, "phase":1.85, "hp":3, "breakable":false},
+			{"x":475.0, "speed":1.85, "amp":100.0, "gap":66.0, "phase":3.3, "hp":3, "breakable":true},
+			{"x":600.0, "speed":2.1, "amp":100.0, "gap":66.0, "phase":4.75, "hp":3, "breakable":false}
+		]},
+	{"id":"asia-5", "name":"Pol Pot", "hp":4, "motion":1, "shield":2,
+		"texture":preload("res://assets/camboya.png"),
+		"hurt":{"texture":preload("res://assets/camboya_dolor.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 453, 724), Rect2(453, 0, 422, 724), Rect2(875, 0, 424, 724), Rect2(1299, 0, 424, 724), Rect2(1723, 0, 449, 724)],
+			"anchors":[Rect2(16, 192, 432, 456), Rect2(457, 192, 432, 456), Rect2(883, 192, 432, 456), Rect2(1307, 196, 432, 456), Rect2(1751, 196, 432, 456)]},
+		"death":{"texture":preload("res://assets/camboya_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 381, 724), Rect2(381, 0, 476, 724), Rect2(857, 0, 437, 724), Rect2(1294, 0, 481, 724), Rect2(1775, 0, 397, 724)],
+			"anchors":[Rect2(32, 216, 348, 368), Rect2(489, 200, 348, 368), Rect2(861, 204, 348, 368), Rect2(1354, 220, 348, 368), Rect2(1796, 279, 348, 368)]},
+		"zone":"Camboya", "color":Color("#3a1218"), "music":"boss", "threat":5, "reloads":2,
+		"walls":[
+			{"x":225.0, "speed":1.375, "amp":105.0, "gap":64.0, "phase":0.4, "hp":2, "breakable":true},
+			{"x":324.0, "speed":1.655, "amp":105.0, "gap":64.0, "phase":1.85, "hp":3, "breakable":false},
+			{"x":423.0, "speed":1.935, "amp":105.0, "gap":64.0, "phase":3.3, "hp":3, "breakable":true},
+			{"x":522.0, "speed":2.215, "amp":105.0, "gap":64.0, "phase":4.75, "hp":3, "breakable":false},
+			{"x":621.0, "speed":2.495, "amp":105.0, "gap":64.0, "phase":6.2, "hp":3, "breakable":true}
 		]}
 ]
 
-# Mundos del mapa (scripts/world_map.gd), en orden. "background" es la imagen del mundo (cuadrada;
-# ya trae dibujados la ruta, los puntos y sus nombres). Cada nodo es una etapa de LIST:
+# Mundos del mapa (scripts/world_map.gd), en orden; se pasa de uno al siguiente al ganar su última
+# etapa. "background" es la imagen del mundo; "view" (opcional) la parte que se muestra, en px de la
+# imagen (por defecto, entera; se escala para caber en el cuadrado del mapa). La imagen
+# ya trae dibujados la ruta, los puntos y sus nombres. Cada nodo es una etapa de LIST:
 #   "stage"  = nivel (índice 1.. de LIST)        "label"  = nombre del punto en el panel
 #   "pos"    = centro del punto en la imagen (px) "radius" = radio del punto en la imagen (px)
 #   "via"    = recodos de la ruta que llega desde el nodo anterior, en px de la imagen (opcional)
@@ -126,5 +217,20 @@ const WORLDS := [
 				"via":[Vector2(510, 440), Vector2(545, 410), Vector2(580, 392)]},
 			{"stage":5, "label":"Cuba", "pos":Vector2(650, 240), "radius":30.0,
 				"via":[Vector2(628, 340), Vector2(640, 290)]}
+		]},
+	{"id":"asia", "name":"Mundo 2 · Asia", "background":preload("res://assets/map_word_2.png"),
+		# Sin la columna derecha (repite la lista de etapas del panel) ni la consola inferior.
+		"view":Rect2(50, 25, 1050, 905),
+		"nodes":[
+			{"stage":6, "label":"China", "pos":Vector2(662, 285), "radius":22.0},
+			{"stage":7, "label":"Corea del Norte", "pos":Vector2(902, 347), "radius":22.0,
+				"via":[Vector2(760, 290), Vector2(812, 312), Vector2(855, 343)]},
+			{"stage":8, "label":"Vietnam", "pos":Vector2(890, 672), "radius":22.0,
+				"via":[Vector2(900, 392), Vector2(872, 440), Vector2(855, 500), Vector2(845, 570), Vector2(842, 645)]},
+			# De Vietnam a Laos y de Laos a Camboya la ruta pasa por el cruce (punto 3 del mapa).
+			{"stage":9, "label":"Laos", "pos":Vector2(700, 615), "radius":22.0,
+				"via":[Vector2(842, 645), Vector2(790, 620), Vector2(735, 617)]},
+			{"stage":10, "label":"Camboya", "pos":Vector2(738, 775), "radius":18.0,
+				"via":[Vector2(735, 617), Vector2(790, 620), Vector2(842, 645), Vector2(870, 700), Vector2(812, 735), Vector2(772, 752)]}
 		]}
 ]

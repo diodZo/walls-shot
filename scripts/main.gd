@@ -358,6 +358,7 @@ func build_ui() -> void:
 	world_map.panel_box = ui_box(UI_TEX["panel_large"], Vector2(48, 34), Vector2(44, 30))
 	world_map.stage_chosen.connect(enter_stage)
 	world_map.menu_requested.connect(go_menu)
+	world_map.world_requested.connect(change_world)
 	world_map.hide()
 	add_child(world_map)
 	overlay_panel = PanelContainer.new()
@@ -483,9 +484,21 @@ func reset_stage() -> void:
 	enemy_y = LINE_Y
 	shield_open = true
 	for def in stage()["walls"]:
-		walls.append({"x":float(def["x"]), "w":WALL_WIDTH, "center":LINE_Y, "phase":float(def["phase"]), "clock":0.0, "speed":float(def["speed"]), "amp":float(def["amp"]), "gap":float(def["gap"]), "hp":int(def["hp"]), "breakable":bool(def["breakable"]), "broken":false})
+		add_wall(def)
 	refresh_ui()
 	queue_redraw()
+
+# Muro a partir de su definición en la ficha. Se inserta por orden de x: move_bullet() recorre
+# los muros de izquierda a derecha.
+func add_wall(def: Dictionary) -> int:
+	var wall := {"x":float(def["x"]), "w":WALL_WIDTH, "center":LINE_Y, "phase":float(def["phase"]), "clock":0.0, "speed":float(def["speed"]), "amp":float(def["amp"]), "gap":float(def["gap"]), "hp":int(def["hp"]), "breakable":bool(def["breakable"]), "broken":false}
+	var at: int = walls.size()
+	for i in walls.size():
+		if float(walls[i]["x"]) > float(wall["x"]):
+			at = i
+			break
+	walls.insert(at, wall)
+	return at
 
 # Ficha de la etapa actual (scripts/stages.gd).
 func stage() -> Dictionary:
@@ -548,19 +561,35 @@ func open_map() -> void:
 	overlay_panel.hide()
 	dossier.hide()
 	reset_stage()
-	world_map.open(world_of(level), STAGES, unlocked, stars, level, coins)
+	var w: int = world_index_of(level)
+	var has_next: bool = w + 1 < WORLDS.size() and first_stage_of(w + 1) <= unlocked
+	world_map.open(WORLDS[w], STAGES, unlocked, stars, level, coins, w > 0, has_next)
 	set_combat_ui(false)
 
 func set_combat_ui(shown: bool) -> void:
 	for control in combat_ui:
 		control.visible = shown
 
-func world_of(stage_level: int) -> Dictionary:
-	for world in WORLDS:
-		for node in world["nodes"]:
+func world_index_of(stage_level: int) -> int:
+	for w in WORLDS.size():
+		for node in WORLDS[w]["nodes"]:
 			if int(node["stage"]) == stage_level:
-				return world
-	return WORLDS[0]
+				return w
+	return 0
+
+func first_stage_of(w: int) -> int:
+	return int(WORLDS[w]["nodes"][0]["stage"])
+
+func last_stage_of(w: int) -> int:
+	var nodes: Array = WORLDS[w]["nodes"]
+	return int(nodes[nodes.size() - 1]["stage"])
+
+# Paso de un mundo a otro desde el mapa: se llega por el extremo que los une (como en Mario World).
+func change_world(step: int) -> void:
+	var w: int = clampi(world_index_of(level) + step, 0, WORLDS.size() - 1)
+	level = first_stage_of(w) if step > 0 else last_stage_of(w)
+	save_game()
+	open_map()
 
 # Etapa elegida en el mapa: pasa por el expediente si no se ha visto.
 func enter_stage(stage_level: int) -> void:
@@ -570,7 +599,14 @@ func enter_stage(stage_level: int) -> void:
 
 # Botón principal del panel: JUGAR (menú) y CONTINUAR (victoria) llevan al mapa; REINTENTAR repite la etapa.
 func on_overlay_start() -> void:
-	if status == "menu" or status == "win":
+	if status == "win":
+		# Tras la última etapa de un mundo, el mapa del siguiente.
+		var w: int = world_index_of(level)
+		if level == last_stage_of(w) and w + 1 < WORLDS.size():
+			level = first_stage_of(w + 1)
+			save_game()
+		open_map()
+	elif status == "menu":
 		open_map()
 	else:
 		start_stage()
@@ -857,7 +893,14 @@ func next_phase() -> void:
 	shield_open = true
 	spawn_particles(Vector2(ENEMY_X, enemy_y), Color("#ffe39d"), 30)
 	play_sfx("reload_done")
-	notify("¡%s ENTRA EN COMBATE!" % str(enemy()["name"]).to_upper())
+	# "add_walls": muros que se levantan con este jefe (p. ej. los blancos de Chile).
+	var new_walls: Array = enemy().get("add_walls", [])
+	for def in new_walls:
+		var wall: Dictionary = walls[add_wall(def)]
+		spawn_particles(Vector2(float(wall["x"]) + WALL_WIDTH * 0.5, float(wall["center"])), Color("#ffbf81"), 24)
+	if not new_walls.is_empty():
+		impact(0.0, SHAKE_WALL_BREAK)
+	notify(str(enemy().get("notice", "¡%s ENTRA EN COMBATE!" % str(enemy()["name"]).to_upper())))
 	refresh_ui()
 	check_out_of_ammo() # si la última bala derribó al primero, sin cargadores se pierde
 

@@ -56,6 +56,12 @@ func key(code: Key) -> InputEventKey:
 	event.pressed = true
 	return event
 
+# Salta al último blanco o jefe de la etapa (Chile tiene tres blancos seguidos).
+func last_target(game: Node) -> void:
+	game.phase = (game.stage().get("phases", []) as Array).size()
+	game.enemy_hp = int(game.enemy()["hp"])
+	game.enemy_max_hp = game.enemy_hp
+
 func fresh(game: Node, lvl: int, weapon: int) -> void:
 	game.level = lvl
 	game.owned = [0, 1, 2, 3]
@@ -113,6 +119,14 @@ func run_tests() -> void:
 				if not extra.has(k):
 					data_ok = false
 					print("   etapa %d: jefe adicional sin \"%s\"" % [i + 1, k])
+			if extra.get("texture") == null and not extra.has("hit"):
+				data_ok = false
+				print("   etapa %d: jefe adicional sin sprite necesita \"hit\"" % (i + 1))
+			for w in extra.get("add_walls", []):
+				for k in wall_keys:
+					if not w.has(k):
+						data_ok = false
+						print("   etapa %d: muro añadido sin \"%s\"" % [i + 1, k])
 		for anim in [st.get("hurt"), st.get("death")]:
 			if anim != null and (anim["src"] as Array).size() != (anim["anchors"] as Array).size():
 				data_ok = false
@@ -261,10 +275,21 @@ func run_tests() -> void:
 	hit_center(game)
 	game.go_menu()
 	check(game.status == "menu" and game.death_time < 0.0 and not game.enemy_defeated, "ir al menú durante la muerte deja el estado limpio")
+	# Chile: tres blancos seguidos; con el 2.º y el 3.º se levanta un muro más.
 	fresh(game, 1, 0)
-	game.walls.clear()
+	var chile_walls: int = game.walls.size()
 	hit_center(game)
-	check(game.status == "win" and game.hurt_frame() == -1, "nivel 1 (sin animaciones): victoria inmediata")
+	check(game.status == "play" and game.phase == 1 and game.walls.size() == chile_walls + 1 and game.notice.begins_with("BLANCO 2"), "Chile: el 1.er blanco da paso al 2.º y se levanta un muro")
+	var xs_sorted := true
+	for i in range(1, game.walls.size()):
+		xs_sorted = xs_sorted and float(game.walls[i]["x"]) > float(game.walls[i - 1]["x"])
+	check(xs_sorted and game.shake > 0.0, "Chile: el muro nuevo queda en orden de izquierda a derecha, con sacudida")
+	hit_center(game)
+	check(game.status == "play" and game.phase == 2 and game.walls.size() == chile_walls + 2 and game.notice.begins_with("BLANCO 3"), "Chile: el 2.º blanco da paso al 3.º y otro muro")
+	hit_center(game)
+	check(game.status == "win" and game.hurt_frame() == -1, "Chile: el 3.er blanco da la victoria (sin animaciones)")
+	game.start_stage()
+	check(game.phase == 0 and game.walls.size() == chile_walls, "Chile: reintentar vuelve al 1.er blanco y a un solo muro")
 
 	# --- Animaciones de la pistola (disparo y recarga) ---
 	for weapon in [0, 1, 2, 3]:
@@ -428,6 +453,7 @@ func run_tests() -> void:
 	game.walls.clear()
 	game.shots = 1
 	game.total_shots = 1
+	last_target(game)
 	hit_center(game)
 	var lit := 0
 	for medal in game.overlay_medals:
@@ -451,13 +477,14 @@ func run_tests() -> void:
 	game.fire()
 	game.bullet.clear()
 	var coins_pre: int = game.coins
+	last_target(game)
 	hit_center(game)
 	lit = 0
 	for medal in game.overlay_medals:
 		if medal.modulate == Color.WHITE:
 			lit += 1
 	check(game.status == "win" and game.shots == 1 and game.total_shots == 9 and lit == 1, "victoria tras recargar: cuenta los 9 disparos (1 estrella)")
-	check(game.coins - coins_pre == 110 + 80 + 40, "victoria tras recargar: sin bonus por balas no disparadas")
+	check(game.coins - coins_pre == 110 + 80 + 3 * 40, "victoria tras recargar: sin bonus por balas no disparadas (3 blancos)")
 	# Comprar o cambiar de arma durante el expediente recalcula las habilidades del nivel.
 	game.level = 2
 	game.briefed_level = 0
@@ -614,7 +641,7 @@ func run_tests() -> void:
 	game.stars.clear() # la partida guardada del jugador puede traer medallas propias
 	fresh(game, 1, 3)
 	var cleared := 0
-	for lvl in range(1, 6):
+	for lvl in range(1, game.STAGES.size() + 1):
 		var attempts := 0
 		while attempts < 40:
 			attempts += 1
@@ -633,14 +660,18 @@ func run_tests() -> void:
 		check(game.status == "win", "nivel %d completable (intentos %d)" % [lvl, attempts])
 		if game.status == "win":
 			cleared += 1
-			check(game.unlocked >= mini(5, lvl + 1), "nivel %d desbloquea el siguiente" % lvl)
+			check(game.unlocked >= mini(game.STAGES.size(), lvl + 1), "nivel %d desbloquea el siguiente" % lvl)
 			check(game.overlay_start.text == "CONTINUAR" and not game.overlay_menu.visible, "victoria: botón CONTINUAR")
+			if lvl == game.last_stage_of(0):
+				# Fin del Mundo 1: CONTINUAR lleva al mapa del Mundo 2, sobre su primera etapa.
+				game.overlay_start.pressed.emit()
+				check(game.status == "map" and game.world_map.world["id"] == "asia" and game.world_map.current_level() == lvl + 1 and game.world_map.has_prev_world, "fin del Mundo 1: CONTINUAR abre el mapa de Asia")
 	check(game.coins > 0 and game.stars.size() == cleared, "monedas y estrellas otorgadas")
 	game.overlay_start.pressed.emit()
 	var all_open := true
 	for i in game.world_map.node_count():
 		all_open = all_open and game.world_map.is_open(i)
-	check(game.status == "map" and game.world_map.current_level() == 5 and all_open, "tras la última etapa, CONTINUAR vuelve al mapa con todo abierto")
+	check(game.status == "map" and game.world_map.current_level() == game.STAGES.size() and all_open and not game.world_map.has_next_world, "tras la última etapa, CONTINUAR vuelve al mapa con todo abierto")
 
 	# --- Mapa del mundo ---
 	game.unlocked = 2
@@ -710,6 +741,38 @@ func run_tests() -> void:
 	wm.menu_button.pressed.emit()
 	check(game.status == "menu", "mapa: botón MENÚ PRINCIPAL")
 
+	# --- Cambio de mundo: Asia se abre al ganar Cuba ---
+	game.unlocked = 5
+	game.level = 5
+	game.open_map()
+	game._unhandled_input(key(KEY_RIGHT))
+	check(not wm.has_next_world and wm.world["id"] == "sudamerica", "mapa: Asia bloqueada hasta ganar Cuba")
+	game.unlocked = 6
+	game.open_map()
+	game._unhandled_input(key(KEY_RIGHT))
+	check(game.status == "map" and wm.world["id"] == "asia" and wm.current_level() == 6, "mapa: → desde Cuba pasa a Asia, a China")
+	await process_frame # dibuja el mapa de Asia (vista recortada)
+	game._unhandled_input(key(KEY_LEFT))
+	check(wm.world["id"] == "sudamerica" and wm.current_level() == 5, "mapa: ← desde China vuelve a Sudamérica, a Cuba")
+	wm.next_world_button.pressed.emit()
+	check(wm.world["id"] == "asia" and wm.current_level() == 6, "mapa: botón MUNDO ►")
+	var view: Rect2 = wm.view_rect()
+	var inside := true
+	for i in wm.node_count():
+		inside = inside and Rect2(0, 0, wm.MAP_SIZE, wm.MAP_SIZE).has_point(wm.node_pos(i))
+	check(view.size.x < 1448.0 and inside, "mapa de Asia: vista recortada con todos los puntos dentro")
+	game.unlocked = 10
+	game.level = 9
+	game.open_map()
+	game._unhandled_input(key(KEY_RIGHT))
+	for i in 600:
+		wm._process(1.0 / 60.0)
+	check(wm.cursor == 4 and wm.agent_pos.is_equal_approx(wm.node_pos(4)), "mapa de Asia: de Laos a Camboya pasando por el cruce")
+	game._unhandled_input(key(KEY_LEFT))
+	check(wm.walking() and wm.cursor == 3, "mapa de Asia: ← desde Camboya vuelve a Laos")
+	game.unlocked = 5
+	game.go_menu()
+
 	# --- Guardado ---
 	var coins_before: int = game.coins
 	game.save_game()
@@ -729,7 +792,7 @@ func run_tests() -> void:
 
 	# --- Partida guardada de la versión 1: medallas por número de nivel ---
 	var legacy_file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	legacy_file.store_string(JSON.stringify({"version":1, "coins":10, "unlocked":4, "level":3, "stars":{"1":2, "3":3, "9":1, "etapa-borrada":3}}))
+	legacy_file.store_string(JSON.stringify({"version":1, "coins":10, "unlocked":4, "level":3, "stars":{"1":2, "3":3, "99":1, "etapa-borrada":3}}))
 	legacy_file.close()
 	var legacy: Node = load("res://scenes/main.tscn").instantiate()
 	root.add_child(legacy)

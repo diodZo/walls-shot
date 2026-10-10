@@ -11,6 +11,7 @@ extends Control
 
 signal stage_chosen(level: int)
 signal menu_requested
+signal world_requested(step: int) # -1 = mundo anterior, 1 = siguiente
 
 const AGENT := preload("res://assets/player.png")
 const AGENT_HEIGHT := 56.0 # alto en pantalla del agente
@@ -38,23 +39,31 @@ var facing := 1.0 # 1 = mira a la derecha (pose original), -1 = a la izquierda
 var agent_region := Rect2() # área opaca de player.png (se calcula al dibujar por primera vez)
 var enter_button: Button
 var menu_button: Button
+var prev_world_button: Button
+var next_world_button: Button
+var has_prev_world := false
+var has_next_world := false # existe y su primera etapa está desbloqueada
 
 func _ready() -> void:
+	prev_world_button = make_button("◄ MUNDO", func(): change_world(-1), Vector2(MAP_SIZE + 45, 460), 125.0)
+	next_world_button = make_button("MUNDO ►", func(): change_world(1), Vector2(MAP_SIZE + 180, 460), 125.0)
 	enter_button = make_button("ENTRAR", enter, Vector2(MAP_SIZE + 45, 520))
 	menu_button = make_button("MENÚ PRINCIPAL", func(): menu_requested.emit(), Vector2(MAP_SIZE + 45, 572))
 
-func make_button(label: String, fn: Callable, pos: Vector2) -> Button:
+func make_button(label: String, fn: Callable, pos: Vector2, width: float = 260.0) -> Button:
 	var button := Button.new()
 	button.text = label
 	button.position = pos
-	button.custom_minimum_size = Vector2(260, 45)
+	button.custom_minimum_size = Vector2(width, 45)
 	button.focus_mode = Control.FOCUS_NONE # ENTER y ESPACIO los gestiona handle_input()
 	button.pressed.connect(fn)
 	add_child(button)
 	return button
 
-func open(world_data: Dictionary, stage_list: Array, unlocked_count: int, ratings: Dictionary, level: int, coin_count: int) -> void:
+func open(world_data: Dictionary, stage_list: Array, unlocked_count: int, ratings: Dictionary, level: int, coin_count: int, prev_world: bool = false, next_world: bool = false) -> void:
 	world = world_data
+	has_prev_world = prev_world
+	has_next_world = next_world
 	stages = stage_list
 	unlocked = unlocked_count
 	stars = ratings
@@ -69,13 +78,23 @@ func open(world_data: Dictionary, stage_list: Array, unlocked_count: int, rating
 	show()
 	queue_redraw()
 
-# Escala de la imagen del mundo (px de la imagen -> px de pantalla).
-func map_scale() -> float:
+# Parte de la imagen del mundo que se muestra ("view"; por defecto, entera), en px de la imagen.
+func view_rect() -> Rect2:
 	var bg: Texture2D = world.get("background")
-	return MAP_SIZE / float(bg.get_width()) if bg != null else 1.0
+	var full := Rect2(Vector2.ZERO, bg.get_size()) if bg != null else Rect2(0, 0, MAP_SIZE, MAP_SIZE)
+	return world.get("view", full)
+
+# Escala de la imagen del mundo (px de la imagen -> px de pantalla): la vista cabe en MAP_SIZE.
+func map_scale() -> float:
+	var view: Rect2 = view_rect()
+	return minf(MAP_SIZE / view.size.x, MAP_SIZE / view.size.y)
+
+# Esquina de la vista en pantalla: centrada en el cuadrado de MAP_SIZE.
+func map_origin() -> Vector2:
+	return (Vector2(MAP_SIZE, MAP_SIZE) - view_rect().size * map_scale()) * 0.5
 
 func to_screen(p: Vector2) -> Vector2:
-	return p * map_scale()
+	return map_origin() + (p - view_rect().position) * map_scale()
 
 func node_count() -> int:
 	return (world.get("nodes", []) as Array).size()
@@ -128,7 +147,8 @@ func walk_to(i: int) -> void:
 func neighbor_towards(dir: Vector2) -> int:
 	var best := -1
 	var best_dot := 0.5
-	for n in [cursor - 1, cursor + 1]:
+	# Primero el siguiente: si ambas rutas salen igual (tramo compartido), gana avanzar.
+	for n in [cursor + 1, cursor - 1]:
 		if n < 0 or n >= node_count():
 			continue
 		# Primer punto de la ruta al salir del nodo actual hacia n.
@@ -163,7 +183,14 @@ func handle_input(event: InputEvent) -> void:
 			KEY_ESCAPE:
 				menu_requested.emit()
 		if dir != Vector2.ZERO:
-			walk_to(neighbor_towards(dir))
+			var target: int = neighbor_towards(dir)
+			# Más allá del último punto (o antes del primero) está el mundo siguiente (o el anterior).
+			if target >= node_count():
+				change_world(1)
+			elif target < 0:
+				change_world(-1)
+			else:
+				walk_to(target)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		for i in node_count():
 			if event.position.distance_to(node_pos(i)) <= maxf(node_radius(i), MIN_CLICK_RADIUS) * 1.4:
@@ -172,6 +199,12 @@ func handle_input(event: InputEvent) -> void:
 				else:
 					walk_to(i)
 				return
+
+func change_world(step: int) -> void:
+	if walking():
+		return
+	if (step > 0 and has_next_world) or (step < 0 and has_prev_world):
+		world_requested.emit(step)
 
 func enter() -> void:
 	if not walking() and is_open(cursor):
@@ -195,12 +228,15 @@ func _process(delta: float) -> void:
 			budget = 0.0
 	if enter_button != null:
 		enter_button.disabled = walking() or not is_open(cursor)
+		prev_world_button.disabled = walking() or not has_prev_world
+		next_world_button.disabled = walking() or not has_next_world
 	queue_redraw()
 
 func _draw() -> void:
 	var bg: Texture2D = world.get("background")
 	if bg != null:
-		draw_texture_rect(bg, Rect2(0, 0, MAP_SIZE, MAP_SIZE), false)
+		draw_rect(Rect2(0, 0, MAP_SIZE, MAP_SIZE), Color("#15170f")) # bandas si la vista no es cuadrada
+		draw_texture_rect_region(bg, Rect2(map_origin(), view_rect().size * map_scale()), view_rect())
 	for i in node_count():
 		draw_node_state(i)
 	draw_agent()
@@ -222,7 +258,12 @@ func draw_node_state(i: int) -> void:
 		draw_arc(p, r + 3.0 + pulse * 4.0, 0, TAU, 32, Color(1.0, 0.85, 0.3, 0.9 - pulse * 0.5), 2.5)
 	elif best - 1 < medal_icons.size():
 		var icon: Texture2D = medal_icons[best - 1]
-		draw_texture(icon, p + Vector2(-r - icon.get_width() - 1.0, -icon.get_height() * 0.5))
+		# Encima del punto (a los lados la imagen trae el número y el nombre), sobre un disco oscuro
+		# para que destaque del arte del mapa.
+		var size_px: Vector2 = icon.get_size() * 1.4
+		var center := p + Vector2(0, -r - size_px.y * 0.5 - 4.0)
+		draw_circle(center, size_px.y * 0.5 + 3.0, Color(0.05, 0.06, 0.04, 0.85))
+		draw_texture_rect(icon, Rect2(center - size_px * 0.5, size_px), false)
 
 func draw_agent() -> void:
 	# Sprite de una sola pose (señala a la derecha): rebota al caminar y se voltea según la dirección.
@@ -264,14 +305,14 @@ func draw_panel() -> void:
 		var icon: Texture2D = medal_large[m]
 		var tint := Color.WHITE if m < best else Color(0.25, 0.25, 0.25, 0.55)
 		draw_texture(icon, Vector2(x + m * (icon.get_width() + 10.0), 292), tint)
-	draw_string(font, Vector2(x, 420), "MONEDAS: %d" % coins, HORIZONTAL_ALIGNMENT_LEFT, w, 15, INK)
-	draw_string(font, Vector2(x, 450), "FLECHAS: moverse", HORIZONTAL_ALIGNMENT_LEFT, w, 13, INK)
-	draw_string(font, Vector2(x, 470), "ENTER / CLIC: entrar   ESC: menú", HORIZONTAL_ALIGNMENT_LEFT, w, 13, INK)
+	draw_string(font, Vector2(x, 380), "MONEDAS: %d" % coins, HORIZONTAL_ALIGNMENT_LEFT, w, 15, INK)
+	draw_string(font, Vector2(x, 408), "FLECHAS: moverse", HORIZONTAL_ALIGNMENT_LEFT, w, 13, INK)
+	draw_string(font, Vector2(x, 428), "ENTER / CLIC: entrar   ESC: menú", HORIZONTAL_ALIGNMENT_LEFT, w, 13, INK)
 	# Avisos de main.gd (p. ej. sin monedas): el mapa tapa el escenario donde se dibujan.
 	var host := get_parent()
 	if host != null and "notice_time" in host and float(host.notice_time) > 0.0:
 		var alpha: float = clampf(float(host.notice_time) / 0.4, 0.0, 1.0)
-		draw_string(font, Vector2(x, 500), str(host.notice), HORIZONTAL_ALIGNMENT_LEFT, w, 15, Color(ACCENT, alpha))
+		draw_string(font, Vector2(x, 352), str(host.notice), HORIZONTAL_ALIGNMENT_LEFT, w, 15, Color(ACCENT, alpha))
 
 func stage_id(level: int) -> String:
 	return str(stages[level - 1]["id"])

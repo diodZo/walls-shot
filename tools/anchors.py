@@ -2,7 +2,7 @@
 
 Para cada hoja (fotogramas en horizontal; 4 por defecto, o los indicados con "hoja.png:N") calcula:
   - "src": la región de cada fotograma, cortando por los huecos transparentes reales. Si los
-    fotogramas se tocan, corta por la columna menos opaca cerca de cada división en partes iguales.
+    fotogramas se tocan, corta por la columna menos opaca cerca de cada división (sheet_cuts.py).
   - "anchors": dónde está el sprite base dentro de cada fotograma. Se busca ajustando su silueta
     (IoU de máscaras alfa); la escala se fija con el primer fotograma de la hoja. Si un fotograma
     no contiene al personaje (IoU < THRESH, p. ej. una explosión), se ancla por su centro de masa.
@@ -20,6 +20,7 @@ Ejemplo:
 import sys, json
 import numpy as np
 from PIL import Image, ImageDraw
+from sheet_cuts import cuts_for
 
 if len(sys.argv) != 5:
     sys.exit(__doc__)
@@ -30,27 +31,6 @@ THRESH = 0.6   # IoU mínimo para considerar que el fotograma contiene al person
 
 def load(name):
     return np.array(Image.open(f"{ASSETS}/{name}").convert("RGBA"))
-
-def cuts_for(a, n):
-    cols = (a >= 128).any(axis=0)
-    runs, s = [], None
-    for i, b in enumerate(cols):
-        if b and s is None: s = i
-        if not b and s is not None:
-            if i - s >= 5: runs.append((s, i - 1))
-            s = None
-    if s is not None: runs.append((s, len(cols) - 1))
-    if len(runs) >= n:
-        gaps = sorted(range(len(runs) - 1), key=lambda k: runs[k + 1][0] - runs[k][1], reverse=True)[:n - 1]
-        return [0] + sorted((runs[k][1] + runs[k + 1][0]) // 2 for k in gaps) + [a.shape[1]]
-    # Fotogramas pegados: columna menos opaca a ±12 % de cada división en partes iguales.
-    opacity = (a >= 128).sum(axis=0)
-    w = a.shape[1]
-    cuts = [0]
-    for k in range(1, n):
-        c, r = w * k // n, w * 12 // (100 * n)
-        cuts.append(c - r + int(np.argmin(opacity[c - r:c + r + 1])))
-    return cuts + [w]
 
 def downsample(mask):
     h, w = mask.shape[0] // DS * DS, mask.shape[1] // DS * DS

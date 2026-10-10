@@ -59,8 +59,15 @@ Cada etapa es una ficha en `scripts/stages.gd`: enemigo (nombre, vida, movimient
 ## Mundos y mapa
 El flujo es menú → mapa → expediente → etapa → mapa. El mapa ocupa toda la ventana: a la izquierda la imagen del mundo y a la derecha un panel con la etapa seleccionada (país, objetivo, estado, medallas) y los botones ENTRAR y MENÚ PRINCIPAL. La barra de combate se oculta mientras tanto.
 
-Los mundos están en `WORLDS` (`scripts/stages.gd`). Cada uno tiene nombre, una imagen cuadrada (`"background"`, que ya trae dibujados la ruta, los puntos y sus nombres) y una lista de nodos con la etapa (`"stage"`), el nombre del punto (`"label"`), su centro y radio en píxeles de la imagen (`"pos"`, `"radius"`) y los recodos de la ruta desde el nodo anterior (`"via"`). Para añadir un continente: su imagen en `assets/` y otra entrada en `WORLDS` con las coordenadas medidas sobre la imagen.
+Los mundos están en `WORLDS` (`scripts/stages.gd`). Cada uno tiene nombre, una imagen (`"background"`, que ya trae dibujados la ruta, los puntos y sus nombres), opcionalmente la parte de ella que se muestra (`"view"`, que se escala para caber en el cuadrado del mapa) y una lista de nodos con la etapa (`"stage"`), el nombre del punto (`"label"`), su centro y radio en píxeles de la imagen (`"pos"`, `"radius"`) y los recodos de la ruta desde el nodo anterior (`"via"`). Para añadir un continente: su imagen en `assets/` y otra entrada en `WORLDS` con las coordenadas medidas sobre la imagen.
 
 Sobre los puntos de la imagen el juego solo dibuja su estado: anillo si está pendiente, medalla si está superada y candado si está bloqueada. El agente (`assets/player.png`) camina por la ruta y solo llega hasta la última etapa desbloqueada. Las medallas se guardan por el `"id"` de la etapa; las partidas de la versión anterior (por número de nivel) se convierten al cargar y las de etapas que ya no existen se descartan.
 
-Mundo 1 (`assets/map_word_1.png`): Chile, Argentina, Colombia, Venezuela y Cuba. Argentina, Colombia y Venezuela tienen sus jefes (`assets/boss_*`); en Venezuela, al morir el primero entra el segundo (`"phases"` en la ficha). Chile (diana de práctica) y Cuba (Boss Retro Rojo) conservan los provisionales. En el mapa suena el tema del menú.
+Mundo 1 (`assets/map_word_1.png`): Chile, Argentina, Colombia, Venezuela y Cuba. Argentina, Colombia y Venezuela tienen sus jefes (`assets/boss_*`); en Venezuela, al morir el primero entra el segundo (`"phases"` en la ficha). Chile es el entrenamiento: tres blancos seguidos, y con el 2.º y el 3.º se levanta un muro más (`"add_walls"` en `"phases"`). Cuba (Boss Retro Rojo) conserva el jefe provisional. En el mapa suena el tema del menú.
+
+Mundo 2 (`assets/map_word_2.png`, se abre al ganar Cuba): China, Corea del Norte, Vietnam, Laos y Camboya. Al ganar la última etapa de un mundo, CONTINUAR lleva al mapa del siguiente; en el mapa se cambia de mundo con los botones ◄ MUNDO / MUNDO ► o avanzando más allá del último punto (retrocediendo antes del primero).
+
+Si un jefe llega solo con sus hojas de dolor y muerte, su sprite base se crea a partir del primer fotograma (pose neutra) de la hoja de dolor:
+```
+python tools/base_from_sheet.py assets/korea_dolor.png assets/korea.png 5
+```
