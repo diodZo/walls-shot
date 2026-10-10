@@ -47,7 +47,10 @@ Las hojas son de 4 fotogramas en horizontal. Para integrar una nueva, calcula su
 ```
 python tools/anchors.py assets <carpeta_salida> <base.png> <hoja1.png>[,<hoja2.png>]
 ```
-Requiere numpy y Pillow. El script imprime los `Rect2` listos para pegar en `HURT_ANIMATIONS`, `DEATH_ANIMATIONS` o `WEAPON_ANIMATIONS` (`scripts/main.gd`) y genera una vista previa para comprobar la alineación.
+Requiere numpy y Pillow. El script imprime los `Rect2` listos para pegar en `"hurt"` o `"death"` de la etapa (`scripts/stages.gd`) o en `WEAPON_ANIMATIONS` (`scripts/main.gd`) y genera una vista previa para comprobar la alineación.
 
 ## Importante
 Este proyecto es una migración editable, no una conversión 1:1 de cada efecto audiovisual. El progreso `localStorage` del navegador no se importa automáticamente. Las exportaciones Android/iOS requieren configurar los SDK y plantillas de exportación correspondientes (para iOS: macOS/Xcode). Consulta `AUDITORIA_WALLSHOT.md` para el estado técnico y las tareas pendientes.
+
+## Etapas
+Cada etapa es una ficha en `scripts/stages.gd`: enemigo (nombre, vida, movimiento, escudo, sprite y animaciones), muros (posición, velocidad, recorrido, abertura, fase, resistencia y si se pueden romper), cargadores, música, color de fondo, zona y nivel de amenaza del expediente. El orden de la lista es el orden de juego; para añadir una etapa basta con otra entrada. Las pruebas validan que cada ficha tenga todos los campos.

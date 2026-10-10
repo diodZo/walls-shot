@@ -10,12 +10,9 @@ const WALL_TEXTURE := preload("res://assets/wall.png")
 const PISTOL_TEXTURE := preload("res://assets/pistol.png")
 const SHOTGUN_TEXTURE := preload("res://assets/shotgun.png")
 const PLASMA_TEXTURE := preload("res://assets/plasma.png")
-const BOSS_TEXTURE := preload("res://assets/enemy.png")
-const LEVEL_3_BOSS_TEXTURE := preload("res://assets/level_3_boss.png")
-const LEVEL_4_BOSS_TEXTURE := preload("res://assets/level_4_boss.png")
-const FINAL_BOSS_TEXTURE := preload("res://assets/final_boss.png")
-# Sprite por nivel; null = enemigo dibujado por código en draw_enemy().
-const ENEMY_TEXTURES := [null, BOSS_TEXTURE, LEVEL_3_BOSS_TEXTURE, LEVEL_4_BOSS_TEXTURE, FINAL_BOSS_TEXTURE]
+# Fichas de las etapas (enemigo, muros y ambientación); "level" es el índice 1.. de STAGES.
+const STAGES: Array = preload("res://scripts/stages.gd").LIST
+const WALL_WIDTH := 31.0
 const ENEMY_SPRITE_BOX := 130.0
 const SPRITE_HITBOX_FILL := 0.85
 # Ancho en pantalla de cada sprite de arma (índice "sprite" de WEAPONS).
@@ -100,10 +97,11 @@ const DOSSIER_THREAT := Rect2(454, 224, 131, 18)
 const DOSSIER_NOTES := Rect2(290, 284, 305, 92)
 const DOSSIER_FOOTER := Rect2(151, 407, 339, 40)
 const DOSSIER_INK := Color("#2b2414")
+const MAX_THREAT := 5 # franjas que caben en la barra de amenaza del expediente
 const TYPE_SPEED := 45.0 # caracteres por segundo del efecto máquina de escribir
 const MOTION_NAMES := ["posición fija", "desplazamiento vertical", "patrulla lenta"]
 const SHIELD_NAMES := ["ninguno", "intermitente", "alta frecuencia"]
-# Animaciones de arma por índice "sprite" de WEAPONS (mismo formato que HURT_ANIMATIONS).
+# Animaciones de arma por índice "sprite" de WEAPONS (mismo formato que "hurt" en scripts/stages.gd).
 # "fire" se reproduce al disparar; "reload" reparte sus fotogramas a lo largo de la recarga.
 # Anclas = posición del sprite base del arma en cada fotograma, por ajuste automático de silueta.
 const WEAPON_ANIMATIONS := {
@@ -132,42 +130,6 @@ const WEAPON_ANIMATIONS := {
 			"anchors":[Rect2(32, 252, 500, 208), Rect2(571, 252, 500, 208), Rect2(1108, 248, 500, 208), Rect2(1644, 252, 500, 208)]}
 	}
 }
-# Animaciones por sprite sheet, por nivel. Por fotograma (px del PNG):
-#   "src"     = región del fotograma en la hoja.
-#   "anchors" = rectángulo que se hace coincidir con el sprite base dibujado (la cara), para que
-#               el personaje no salte entre fotogramas aunque no esté centrado igual en cada uno.
-# Medidos sobre las hojas *_dolor.png y *_muerte.png (2172x724). Nivel 3 a mano; niveles 2, 4 y 5
-# por ajuste automático del sprite base sobre cada fotograma (escala fija por hoja).
-const HURT_ANIMATIONS := {
-	2: {"texture":preload("res://assets/enemy_dolor.png"), "fps":12.0,
-		"src":[Rect2(0, 0, 563, 724), Rect2(563, 0, 521, 724), Rect2(1084, 0, 565, 724), Rect2(1649, 0, 523, 724)],
-		"anchors":[Rect2(84, 188, 460, 436), Rect2(607, 188, 460, 436), Rect2(1156, 204, 460, 436), Rect2(1681, 196, 460, 436)]},
-	3: {"texture":preload("res://assets/level_3_boss_dolor.png"), "fps":12.0,
-		"src":[Rect2(0, 0, 543, 724), Rect2(543, 0, 543, 724), Rect2(1086, 0, 543, 724), Rect2(1629, 0, 543, 724)],
-		"anchors":[Rect2(102, 71, 385, 589), Rect2(627, 71, 383, 590), Rect2(1148, 70, 387, 589), Rect2(1688, 71, 385, 589)]},
-	4: {"texture":preload("res://assets/level_4_boss_dolor.png"), "fps":12.0,
-		"src":[Rect2(0, 0, 579, 724), Rect2(579, 0, 518, 724), Rect2(1097, 0, 538, 724), Rect2(1635, 0, 537, 724)],
-		"anchors":[Rect2(64, 104, 552, 568), Rect2(615, 104, 552, 568), Rect2(1113, 108, 552, 568), Rect2(1667, 108, 552, 568)]},
-	5: {"texture":preload("res://assets/final_boss_dolor.png"), "fps":12.0,
-		"src":[Rect2(0, 0, 554, 724), Rect2(554, 0, 529, 724), Rect2(1083, 0, 524, 724), Rect2(1607, 0, 565, 724)],
-		"anchors":[Rect2(16, 108, 560, 540), Rect2(554, 108, 560, 540), Rect2(1063, 108, 560, 540), Rect2(1603, 108, 560, 540)]}
-}
-# En la hoja de muerte los fotogramas no tienen el mismo ancho (la explosión invade el hueco
-# vecino) y desde el 2.º ya no hay cara: se anclan por el centro de masa de cada fotograma.
-const DEATH_ANIMATIONS := {
-	2: {"texture":preload("res://assets/enemy_muerte.png"), "fps":8.0,
-		"src":[Rect2(0, 0, 532, 724), Rect2(532, 0, 553, 724), Rect2(1085, 0, 535, 724), Rect2(1620, 0, 552, 724)],
-		"anchors":[Rect2(48, 212, 444, 420), Rect2(564, 216, 444, 420), Rect2(1089, 232, 444, 420), Rect2(1696, 288, 444, 420)]},
-	3: {"texture":preload("res://assets/level_3_boss_muerte.png"), "fps":8.0,
-		"src":[Rect2(0, 0, 470, 724), Rect2(470, 0, 510, 724), Rect2(980, 0, 618, 724), Rect2(1598, 0, 574, 724)],
-		"anchors":[Rect2(92, 140, 310, 483), Rect2(578, 152, 310, 483), Rect2(1128, 153, 310, 483), Rect2(1738, 152, 310, 483)]},
-	4: {"texture":preload("res://assets/level_4_boss_muerte.png"), "fps":8.0,
-		"src":[Rect2(0, 0, 517, 724), Rect2(517, 0, 571, 724), Rect2(1088, 0, 548, 724), Rect2(1636, 0, 536, 724)],
-		"anchors":[Rect2(32, 188, 452, 464), Rect2(621, 192, 452, 464), Rect2(1176, 184, 452, 464), Rect2(1685, 251, 452, 464)]},
-	5: {"texture":preload("res://assets/final_boss_muerte.png"), "fps":8.0,
-		"src":[Rect2(0, 0, 541, 724), Rect2(541, 0, 540, 724), Rect2(1081, 0, 544, 724), Rect2(1625, 0, 547, 724)],
-		"anchors":[Rect2(44, 188, 452, 436), Rect2(557, 180, 452, 436), Rect2(1173, 156, 452, 436), Rect2(1621, 140, 452, 436)]}
-}
 const ENEMY_X := 916.0
 const BULLET_RADIUS := 5.0
 const MAX_PARTICLES := 240
@@ -178,17 +140,6 @@ const WEAPONS := [
 	{"name":"Rifle de precisión","price":650,"speed":1250.0,"ammo":14,"damage":1,"ability":"pierce","sprite":1},
 	{"name":"Cañón de plasma","price":1600,"speed":1090.0,"ammo":12,"damage":2,"ability":"double_pierce","sprite":2}
 ]
-const ENEMIES := [
-	# "hit": semiejes de la hitbox de los enemigos dibujados por código.
-	# Los jefes con sprite (ENEMY_TEXTURES) calculan la suya a partir del sprite visible.
-	{"name":"Blanco clásico","hp":1,"motion":0,"shield":0,"hit":Vector2(62, 62)},
-	{"name":"Drone visor","hp":1,"motion":1,"shield":0},
-	{"name":"Mini-boss Skullbit","hp":2,"motion":1,"shield":1},
-	{"name":"Centinela blindado","hp":3,"motion":2,"shield":1},
-	{"name":"Boss Retro Rojo","hp":4,"motion":1,"shield":2}
-]
-const COLORS := [Color("#27425c"),Color("#375167"),Color("#62413b"),Color("#1b254f"),Color("#3c103f")]
-const WORLD_NAMES := ["Campo de tiro", "Taller industrial", "Fábrica al atardecer", "Laboratorio nocturno", "Arena neón"]
 
 var coins := 0
 var score := 0
@@ -458,7 +409,7 @@ func refresh_ui() -> void:
 		ammo_slots[i].texture = UI_TEX["bullet_full"] if i < ammo_left else UI_TEX["bullet_spent"]
 	for i in range(reload_slots.size()):
 		reload_slots[i].visible = i < reloads_left
-	hud.text = "NIVEL %d/5  MONEDAS %d  PUNTOS %d  HAB %d  ENEMIGO %d/%d" % [level, coins, score, abilities_left, enemy_hp, enemy_max_hp]
+	hud.text = "NIVEL %d/%d  MONEDAS %d  PUNTOS %d  HAB %d  ENEMIGO %d/%d" % [level, STAGES.size(), coins, score, abilities_left, enemy_hp, enemy_max_hp]
 	fire_button.disabled = status != "play" or not bullet.is_empty() or reload_time > 0.0
 	reload_button.disabled = status != "play" or reload_time > 0.0 or reloads_left <= 0 or not bullet.is_empty()
 	ability_button.disabled = status != "play" or abilities_left <= 0 or weapon["ability"] == "none" or not bullet.is_empty()
@@ -471,7 +422,7 @@ func refresh_ui() -> void:
 		weapon_box.add_item(label, i)
 	weapon_box.select(equipped)
 	level_box.clear()
-	for i in range(1, 6):
+	for i in range(1, STAGES.size() + 1):
 		# Medalla según la mejor puntuación en estrellas del nivel (antes era un emoji que podía no verse).
 		var best: int = clampi(int(stars.get(str(i), 0)), 0, 3)
 		var label: String = "Nivel %d" % i + (" (bloqueado)" if i > unlocked else "")
@@ -489,13 +440,13 @@ func reset_stage() -> void:
 	bullet.clear()
 	shots = 0
 	total_shots = 0
-	reloads_left = 2 if level >= 4 else 1
+	reloads_left = int(stage()["reloads"])
 	reload_time = 0.0
 	elapsed = 0.0
 	focus_time = 0.0
 	pierce_next = 0
 	abilities_left = 0 if WEAPONS[equipped]["ability"] == "none" else 2
-	enemy_hp = int(ENEMIES[level - 1]["hp"])
+	enemy_hp = int(stage()["hp"])
 	enemy_max_hp = enemy_hp
 	hurt_time = -1.0
 	death_time = -1.0
@@ -505,10 +456,14 @@ func reset_stage() -> void:
 	shake = 0.0
 	enemy_y = LINE_Y
 	shield_open = true
-	for i in range(level):
-		walls.append({"x":225.0 + float(i) * 495.0 / float(max(level, 2)), "w":31.0, "center":LINE_Y, "phase":float(i) * 1.45 + 0.4, "clock":0.0, "speed":0.85 + float(i) * 0.28 + float(level) * 0.105, "amp":70.0 + float(level) * 7.0, "gap":86.0 - float(level - 1) * 6.0, "hp":2 if i == 0 else 3, "breakable":i == 0 or (level >= 3 and i % 2 == 0), "broken":false})
+	for def in stage()["walls"]:
+		walls.append({"x":float(def["x"]), "w":WALL_WIDTH, "center":LINE_Y, "phase":float(def["phase"]), "clock":0.0, "speed":float(def["speed"]), "amp":float(def["amp"]), "gap":float(def["gap"]), "hp":int(def["hp"]), "breakable":bool(def["breakable"]), "broken":false})
 	refresh_ui()
 	queue_redraw()
+
+# Ficha de la etapa actual (scripts/stages.gd).
+func stage() -> Dictionary:
+	return STAGES[level - 1]
 
 func start_stage() -> void:
 	if overlay_start.pressed.is_connected(next_stage):
@@ -707,7 +662,7 @@ func _process(delta: float) -> void:
 	if status == "play":
 		elapsed += dt
 		focus_time = maxf(0.0, focus_time - dt)
-		var profile: Dictionary = ENEMIES[level - 1]
+		var profile: Dictionary = stage()
 		var motion: int = int(profile["motion"])
 		enemy_y = LINE_Y + (sin(elapsed * 2.2) * 36.0 if motion == 1 else (sin(elapsed * 1.2) * 18.0 if motion == 2 else 0.0))
 		var shield: int = int(profile["shield"])
@@ -765,7 +720,7 @@ func move_bullet(dt: float) -> void:
 	if touches_x and touches_y:
 		if shield_open:
 			enemy_hp = maxi(0, enemy_hp - int(bullet["damage"]))
-			if HURT_ANIMATIONS.has(level):
+			if stage()["hurt"] != null:
 				hurt_time = 0.0
 			spawn_particles(Vector2(maxf(from_x, hit.position.x), bullet_y), Color("#ffe39d"), 22)
 			if enemy_hp > 0:
@@ -773,7 +728,7 @@ func move_bullet(dt: float) -> void:
 				impact(HITSTOP_ENEMY, SHAKE_ENEMY)
 			if enemy_hp <= 0:
 				bullet.clear()
-				if DEATH_ANIMATIONS.has(level):
+				if stage()["death"] != null:
 					start_death()
 				else:
 					win_stage()
@@ -793,10 +748,10 @@ func move_bullet(dt: float) -> void:
 
 func enemy_hitbox() -> Rect2:
 	var half: Vector2
-	if ENEMY_TEXTURES[level - 1] != null:
+	if stage()["texture"] != null:
 		half = enemy_sprite_rect().size * 0.5 * SPRITE_HITBOX_FILL
 	else:
-		half = ENEMIES[level - 1]["hit"]
+		half = stage()["hit"]
 	return Rect2(Vector2(ENEMY_X, enemy_y) - half, half * 2.0)
 
 # Los PNG traen márgenes transparentes: se usa solo el área opaca para dibujar y colisionar.
@@ -856,7 +811,7 @@ func desired_music() -> String:
 		"briefing":
 			return "briefing"
 		"play", "dying":
-			return "levels_a" if level <= 3 else ("levels_b" if level == 4 else "boss")
+			return str(stage()["music"])
 		"win":
 			return "victory"
 		"lose":
@@ -935,10 +890,10 @@ func frame_at(anim: Variant, t: float) -> int:
 	return frame if frame < (anim["src"] as Array).size() else -1
 
 func hurt_frame() -> int:
-	return frame_at(HURT_ANIMATIONS.get(level), hurt_time)
+	return frame_at(stage()["hurt"], hurt_time)
 
 func death_frame() -> int:
-	return frame_at(DEATH_ANIMATIONS.get(level), death_time)
+	return frame_at(stage()["death"], death_time)
 
 func weapon_animation(kind: String) -> Variant:
 	return WEAPON_ANIMATIONS.get(int(WEAPONS[equipped]["sprite"]), {}).get(kind)
@@ -964,7 +919,7 @@ func draw_sheet_frame(anim: Dictionary, frame: int, target: Rect2) -> void:
 	draw_texture_rect_region(tex, Rect2(origin, src.size * s), src)
 
 func enemy_sprite_rect() -> Rect2:
-	var region: Rect2 = sprite_region(ENEMY_TEXTURES[level - 1])
+	var region: Rect2 = sprite_region(stage()["texture"])
 	var size: Vector2 = region.size * (ENEMY_SPRITE_BOX / maxf(region.size.x, region.size.y))
 	return Rect2(Vector2(ENEMY_X, enemy_y) - size * 0.5, size)
 
@@ -1002,12 +957,12 @@ func win_stage() -> void:
 	var threshold: int = int(WEAPONS[equipped]["ammo"])
 	var earned_stars := 3 if total_shots <= int(ceil(float(threshold) * 0.32)) else (2 if total_shots <= int(ceil(float(threshold) * 0.66)) else 1)
 	stars[str(level)] = max(int(stars.get(str(level), 0)), earned_stars)
-	var award: int = 110 + level * 80 + max(0, threshold - total_shots) * 25 + (int(ENEMIES[level - 1]["hp"]) * 40)
+	var award: int = 110 + level * 80 + max(0, threshold - total_shots) * 25 + (int(stage()["hp"]) * 40)
 	coins += award
 	score += award
-	unlocked = max(unlocked, min(5, level + 1))
+	unlocked = max(unlocked, mini(STAGES.size(), level + 1))
 	save_game()
-	show_overlay("¡VICTORIA!", "Derrotaste a %s. Recompensa: %d monedas." % [str(ENEMIES[level - 1]["name"]), award], "SIGUIENTE NIVEL" if level < 5 else "VOLVER AL NIVEL 1")
+	show_overlay("¡VICTORIA!", "Derrotaste a %s. Recompensa: %d monedas." % [str(stage()["name"]), award], "SIGUIENTE NIVEL" if level < STAGES.size() else "VOLVER AL NIVEL 1")
 	# Medallas: bronce, plata y oro; las no conseguidas se ven apagadas.
 	overlay_medals[0].get_parent().visible = true
 	for i in range(overlay_medals.size()):
@@ -1021,7 +976,7 @@ func next_stage() -> void:
 		overlay_start.pressed.disconnect(next_stage)
 	if not overlay_start.pressed.is_connected(start_stage):
 		overlay_start.pressed.connect(start_stage)
-	level = level + 1 if level < 5 else 1
+	level = level + 1 if level < STAGES.size() else 1
 	save_game()
 	start_stage()
 
@@ -1046,7 +1001,7 @@ func _draw() -> void:
 		draw_texture(UI_TEX["menu_bg"], Vector2.ZERO) # búnker de mando con el mapa
 		draw_set_transform(Vector2.ZERO)
 		return
-	var theme_color: Color = COLORS[level - 1]
+	var theme_color: Color = stage()["color"]
 	draw_rect(Rect2(-SHAKE_MAX, -SHAKE_MAX, WIDTH + SHAKE_MAX * 2.0, HEIGHT + SHAKE_MAX), theme_color)
 	for i in range(10):
 		var hx: float = float(i) * 120.0
@@ -1114,12 +1069,12 @@ func draw_reticle(r: Rect2) -> void:
 
 # Textos del expediente en orden de escritura: pestaña, nombre, observaciones y pie.
 func dossier_lines() -> Array[String]:
-	var info: Dictionary = ENEMIES[level - 1]
+	var info: Dictionary = stage()
 	var hp: int = int(info["hp"])
 	return [
 		"EXPEDIENTE %02d" % level,
 		str(info["name"]).to_upper(),
-		"Zona: %s" % WORLD_NAMES[level - 1],
+		"Zona: %s" % stage()["zone"],
 		"Resistencia: %d impacto%s" % [hp, "" if hp == 1 else "s"],
 		"Movimiento: %s" % MOTION_NAMES[int(info["motion"])],
 		"Escudo: %s" % SHIELD_NAMES[int(info["shield"])],
@@ -1141,7 +1096,7 @@ func draw_dossier() -> void:
 	d.draw_texture(UI_TEX["dossier"], Vector2.ZERO)
 	# Foto del objetivo, encajada en el marco conservando su proporción.
 	var photo: Rect2 = DOSSIER_PHOTO.grow(-14.0)
-	var tex: Texture2D = ENEMY_TEXTURES[level - 1]
+	var tex: Texture2D = stage()["texture"]
 	if tex != null:
 		var region: Rect2 = sprite_region(tex)
 		var s: float = minf(photo.size.x / region.size.x, photo.size.y / region.size.y)
@@ -1152,9 +1107,9 @@ func draw_dossier() -> void:
 		d.draw_circle(c, 62, Color("#f4edf1"))
 		for r in [48.0, 33.0, 18.0, 7.0]:
 			d.draw_arc(c, r, 0, TAU, 48, Color("#a33d4b") if int(r) % 2 == 0 else Color("#f8f1dc"), 8)
-	# Nivel de amenaza: una franja roja por nivel.
-	var stripe_w: float = DOSSIER_THREAT.size.x / 5.0
-	for i in range(level):
+	# Nivel de amenaza: hasta MAX_THREAT franjas rojas.
+	var stripe_w: float = DOSSIER_THREAT.size.x / float(MAX_THREAT)
+	for i in range(clampi(int(stage()["threat"]), 0, MAX_THREAT)):
 		var x: float = DOSSIER_THREAT.position.x + stripe_w * float(i)
 		var y0: float = DOSSIER_THREAT.position.y
 		var y1: float = DOSSIER_THREAT.end.y
@@ -1180,17 +1135,17 @@ func draw_wall_rect(rect: Rect2) -> void:
 	draw_texture_rect_region(WALL_TEXTURE, rect, Rect2(0, 0, rect.size.x * 3.0, rect.size.y * 3.0), Color.WHITE)
 
 func draw_enemy() -> void:
-	var center := Vector2(916.0, enemy_y)
+	var center := Vector2(ENEMY_X, enemy_y)
 	if enemy_defeated:
 		return
 	if death_frame() >= 0:
-		draw_sheet_frame(DEATH_ANIMATIONS[level], death_frame(), enemy_sprite_rect())
+		draw_sheet_frame(stage()["death"], death_frame(), enemy_sprite_rect())
 		return
-	if ENEMY_TEXTURES[level - 1] != null:
-		var tex: Texture2D = ENEMY_TEXTURES[level - 1]
+	if stage()["texture"] != null:
+		var tex: Texture2D = stage()["texture"]
 		var frame: int = hurt_frame()
 		if frame >= 0:
-			draw_sheet_frame(HURT_ANIMATIONS[level], frame, enemy_sprite_rect())
+			draw_sheet_frame(stage()["hurt"], frame, enemy_sprite_rect())
 		else:
 			draw_texture_rect_region(tex, enemy_sprite_rect(), sprite_region(tex))
 	else:
@@ -1221,7 +1176,7 @@ func load_game() -> void:
 		return
 	coins = maxi(0, int(data.get("coins", 0)))
 	score = maxi(0, int(data.get("score", 0)))
-	unlocked = clampi(int(data.get("unlocked", 1)), 1, 5)
+	unlocked = clampi(int(data.get("unlocked", 1)), 1, STAGES.size())
 	level = clampi(int(data.get("level", 1)), 1, unlocked)
 	var items: Variant = data.get("owned", [0])
 	if typeof(items) == TYPE_ARRAY:

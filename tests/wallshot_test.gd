@@ -32,7 +32,7 @@ func will_hit(game: Node) -> bool:
 			if absf(c - y) > float(w["gap"]) * 0.5 - 5.0 - 2.0:
 				# el primer muro que bloquearía es destructible: disparo útil (estrategia de jugador)
 				return bool(w["breakable"]) and absf(c - y) > float(w["gap"]) * 0.5 + 10.0
-	var prof: Dictionary = game.ENEMIES[game.level - 1]
+	var prof: Dictionary = game.stage()
 	var hit: Vector2 = game.enemy_hitbox().size * 0.5
 	var te: float = game.elapsed + (game.ENEMY_X - hit.x - 125.0) / speed
 	var motion: int = int(prof["motion"])
@@ -85,6 +85,34 @@ func run_tests() -> void:
 	await process_frame
 	check(game.status == "menu", "arranque en menú")
 
+	# --- Fichas de etapas (scripts/stages.gd) ---
+	var keys := ["name", "hp", "motion", "shield", "texture", "hurt", "death", "zone", "color", "music", "threat", "reloads", "walls"]
+	var wall_keys := ["x", "speed", "amp", "gap", "phase", "hp", "breakable"]
+	var data_ok := true
+	for i in game.STAGES.size():
+		var st: Dictionary = game.STAGES[i]
+		var prev_x := -INF
+		for k in keys:
+			if not st.has(k):
+				data_ok = false
+				print("   etapa %d: falta \"%s\"" % [i + 1, k])
+		if st.get("texture") == null and not st.has("hit"):
+			data_ok = false
+			print("   etapa %d: sin sprite necesita \"hit\"" % (i + 1))
+		if not game.MUSIC.has(st.get("music", "")):
+			data_ok = false
+			print("   etapa %d: tema de música desconocido" % (i + 1))
+		for w in st.get("walls", []):
+			for k in wall_keys:
+				if not w.has(k):
+					data_ok = false
+					print("   etapa %d: muro sin \"%s\"" % [i + 1, k])
+			if float(w.get("x", 0.0)) <= prev_x:
+				data_ok = false
+				print("   etapa %d: muros fuera de orden" % (i + 1))
+			prev_x = float(w.get("x", 0.0))
+	check(game.STAGES.size() >= 1 and data_ok, "fichas de etapas completas y válidas (%d etapas)" % game.STAGES.size())
+
 	# --- Partículas ---
 	game.particles.clear()
 	game.spawn_particles(Vector2(100, 100), Color.RED, 12)
@@ -123,7 +151,7 @@ func run_tests() -> void:
 	# --- Nuevos jefes con sprite (niveles 3, 4, 5) ---
 	for lvl in [2, 3, 4, 5]:
 		fresh(game, lvl, 0)
-		var tex: Texture2D = game.ENEMY_TEXTURES[lvl - 1]
+		var tex: Texture2D = game.stage()["texture"]
 		var region: Rect2 = game.sprite_region(tex)
 		var drawn: Rect2 = game.enemy_sprite_rect()
 		var hb: Rect2 = game.enemy_hitbox()
@@ -355,6 +383,7 @@ func run_tests() -> void:
 	fresh(game, 1, 0)
 	game.walls.clear()
 	game.shots = 1
+	game.total_shots = 1
 	hit_center(game)
 	var lit := 0
 	for medal in game.overlay_medals:
@@ -533,6 +562,7 @@ func run_tests() -> void:
 		game._process(0.033)
 	check(game.status == "lose", "sin munición ni cargadores -> GAME OVER")
 	check(game.shots == 8 and game.reloads_left == 0, "consumió 2 cargadores (8+8)")
+	check(game.total_shots == 16 and game.overlay_message.text.contains("Disparos: 16"), "GAME OVER informa los 16 disparos del nivel")
 
 	# --- Partida completa automática niveles 1..5 con el plasma ---
 	game.unlocked = 1

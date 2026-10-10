@@ -6,7 +6,7 @@ Para cada hoja (4 fotogramas en horizontal) calcula:
     (IoU de máscaras alfa); la escala se fija con el primer fotograma de la hoja. Si un fotograma
     no contiene al personaje (IoU < THRESH, p. ej. una explosión), se ancla por su centro de masa.
 
-Imprime los Rect2 listos para pegar en HURT_ANIMATIONS / DEATH_ANIMATIONS / WEAPON_ANIMATIONS
+Imprime los Rect2 listos para pegar en "hurt" / "death" (scripts/stages.gd) o WEAPON_ANIMATIONS
 (scripts/main.gd) y guarda una vista previa preview_<hoja>.png usando la misma fórmula que
 draw_sheet_frame(): el sprite base y luego cada fotograma, con la caja del sprite base en verde.
 
