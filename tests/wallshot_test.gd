@@ -108,6 +108,15 @@ func run_tests() -> void:
 		if not game.MUSIC.has(st.get("music", "")):
 			data_ok = false
 			print("   etapa %d: tema de música desconocido" % (i + 1))
+		for extra in st.get("phases", []):
+			for k in ["name", "hp", "motion", "shield", "texture", "hurt", "death"]:
+				if not extra.has(k):
+					data_ok = false
+					print("   etapa %d: jefe adicional sin \"%s\"" % [i + 1, k])
+		for anim in [st.get("hurt"), st.get("death")]:
+			if anim != null and (anim["src"] as Array).size() != (anim["anchors"] as Array).size():
+				data_ok = false
+				print("   etapa %d: animación con distinto número de src y anchors" % (i + 1))
 		for w in st.get("walls", []):
 			for k in wall_keys:
 				if not w.has(k):
@@ -207,6 +216,7 @@ func run_tests() -> void:
 		var shots_pre: int = game.shots
 		game.fire()
 		check(game.bullet.is_empty() and game.shots == shots_pre, "nivel %d: no se puede disparar durante la muerte" % lvl)
+		var death_count: int = (game.enemy()["death"]["src"] as Array).size()
 		var dseen := {}
 		var dguard := 0
 		while game.status == "dying" and dguard < 200:
@@ -215,10 +225,35 @@ func run_tests() -> void:
 			if dguard % 4 == 0:
 				await process_frame
 			game._process(1.0 / 60.0)
-		check(dseen.size() == 4, "nivel %d: recorre los 4 fotogramas de muerte" % lvl)
+		check(dseen.size() == death_count, "nivel %d: recorre los %d fotogramas de muerte" % [lvl, death_count])
+		if game.stage().has("phases"):
+			# Venezuela: al morir el primer jefe entra el segundo, sin victoria ni recompensa todavía.
+			var second: Dictionary = game.stage()["phases"][0]
+			check(game.status == "play" and game.phase == 1 and game.enemy_hp == int(second["hp"]) and not game.overlay_panel.visible and game.coins == coins_pre and not game.enemy_defeated, "nivel %d: al morir el primer jefe entra %s" % [lvl, second["name"]])
+			check(game.notice.contains(str(second["name"]).to_upper()) and game.enemy_sprite_rect().size.x > 0.0, "nivel %d: aviso del segundo jefe y su sprite" % lvl)
+			await process_frame # dibuja al segundo jefe
+			game.enemy_hp = 1
+			hit_center(game)
+			check(game.status == "dying" and game.death_frame() == 0, "nivel %d: el segundo jefe también tiene animación de muerte" % lvl)
+			dguard = 0
+			while game.status == "dying" and dguard < 200:
+				dguard += 1
+				game._process(1.0 / 60.0)
 		check(game.status == "win" and game.overlay_panel.visible and game.coins > coins_pre and game.enemy_defeated, "nivel %d: tras la muerte aparece la victoria y el jefe desaparece" % lvl)
 		game.start_stage()
-		check(not game.enemy_defeated and game.death_time < 0.0 and game.status == "play", "nivel %d: reiniciar restaura al jefe" % lvl)
+		check(not game.enemy_defeated and game.death_time < 0.0 and game.status == "play" and game.phase == 0 and game.enemy_hp == int(game.stage()["hp"]), "nivel %d: reiniciar restaura al (primer) jefe" % lvl)
+	# Venezuela: si la última bala derriba al primer jefe y no quedan cargadores, se pierde al entrar el segundo.
+	fresh(game, 4, 0)
+	game.walls.clear()
+	game.enemy_hp = 1
+	game.shots = int(game.WEAPONS[0]["ammo"])
+	game.reloads_left = 0
+	hit_center(game)
+	var ammo_guard := 0
+	while game.status == "dying" and ammo_guard < 200:
+		ammo_guard += 1
+		game._process(1.0 / 60.0)
+	check(game.status == "lose" and game.phase == 1, "nivel 4: sin munición al entrar el segundo jefe -> GAME OVER")
 	fresh(game, 3, 0)
 	game.enemy_hp = 1
 	game.walls.clear()
@@ -366,7 +401,7 @@ func run_tests() -> void:
 	game.start_stage()
 	check(game.status == "play", "reintentar el mismo nivel no repite el expediente")
 	var lines: Array = game.dossier_lines()
-	check(lines[1] == "DRONE VISOR" and lines[0] == "EXPEDIENTE 02", "expediente con los datos del objetivo")
+	check(lines[1] == "JEFE DE ARGENTINA" and lines[0] == "EXPEDIENTE 02" and lines[2] == "Zona: Argentina", "expediente con los datos del objetivo")
 	for lvl in [1, 3, 4, 5]:
 		game.level = lvl
 		game.briefed_level = 0

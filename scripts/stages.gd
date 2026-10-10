@@ -9,6 +9,8 @@ extends RefCounted
 #   "shield"       0 = sin escudo, 1 = intermitente, 2 = alta frecuencia.
 #   "texture"      Sprite del enemigo; null = diana dibujada por código (usa "hit" como hitbox).
 #   "hurt"/"death" Animaciones de dolor y muerte (formato abajo); null = sin animación.
+#   "phases"       Opcional: jefes que entran, uno tras otro, al morir el anterior (misma partida,
+#                  mismos muros y munición). Cada uno con name, hp, motion, shield, texture, hurt y death.
 #   "zone"         Nombre del escenario en el expediente.
 #   "color"        Color de fondo del escenario.
 #   "music"        Tema de MUSIC (main.gd) durante la etapa.
@@ -22,6 +24,7 @@ extends RefCounted
 #   "src"     = región del fotograma en la hoja.
 #   "anchors" = rectángulo que se hace coincidir con el sprite base dibujado (la cara), para que
 #               el personaje no salte entre fotogramas aunque no esté centrado igual en cada uno.
+# Las hojas pueden tener cualquier número de fotogramas (las de muerte nuevas tienen 5).
 # Medidos sobre las hojas *_dolor.png y *_muerte.png (2172x724). Skullbit a mano; el resto
 # por ajuste automático del sprite base sobre cada fotograma (escala fija por hoja, tools/anchors.py).
 # En la hoja de muerte los fotogramas no tienen el mismo ancho (la explosión invade el hueco
@@ -34,41 +37,52 @@ const LIST := [
 		"walls":[
 			{"x":225.0, "speed":0.955, "amp":77.0, "gap":86.0, "phase":0.4, "hp":2, "breakable":true}
 		]},
-	{"id":"sudamerica-2", "name":"Drone visor", "hp":1, "motion":1, "shield":0,
-		"texture":preload("res://assets/enemy.png"),
-		"hurt":{"texture":preload("res://assets/enemy_dolor.png"), "fps":12.0,
-			"src":[Rect2(0, 0, 563, 724), Rect2(563, 0, 521, 724), Rect2(1084, 0, 565, 724), Rect2(1649, 0, 523, 724)],
-			"anchors":[Rect2(84, 188, 460, 436), Rect2(607, 188, 460, 436), Rect2(1156, 204, 460, 436), Rect2(1681, 196, 460, 436)]},
-		"death":{"texture":preload("res://assets/enemy_muerte.png"), "fps":8.0,
-			"src":[Rect2(0, 0, 532, 724), Rect2(532, 0, 553, 724), Rect2(1085, 0, 535, 724), Rect2(1620, 0, 552, 724)],
-			"anchors":[Rect2(48, 212, 444, 420), Rect2(564, 216, 444, 420), Rect2(1089, 232, 444, 420), Rect2(1696, 288, 444, 420)]},
+	{"id":"sudamerica-2", "name":"Jefe de Argentina", "hp":1, "motion":1, "shield":0,
+		"texture":preload("res://assets/boss_argentina.png"),
+		"hurt":{"texture":preload("res://assets/boss_argentina_dolor.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 555, 724), Rect2(555, 0, 539, 724), Rect2(1094, 0, 558, 724), Rect2(1652, 0, 520, 724)],
+			"anchors":[Rect2(48, 88, 500, 592), Rect2(595, 88, 500, 592), Rect2(1094, 88, 500, 592), Rect2(1676, 88, 500, 592)]},
+		"death":{"texture":preload("res://assets/boss_argentina_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 427, 724), Rect2(427, 0, 437, 724), Rect2(864, 0, 457, 724), Rect2(1321, 0, 476, 724), Rect2(1797, 0, 375, 724)],
+			"anchors":[Rect2(44, 160, 384, 456), Rect2(459, 160, 384, 456), Rect2(872, 164, 384, 456), Rect2(1325, 164, 384, 456), Rect2(1780, 239, 384, 456)]},
 		"zone":"Argentina", "color":Color("#375167"), "music":"levels_a", "threat":2, "reloads":1,
 		"walls":[
 			{"x":225.0, "speed":1.06, "amp":84.0, "gap":80.0, "phase":0.4, "hp":2, "breakable":true},
 			{"x":472.5, "speed":1.34, "amp":84.0, "gap":80.0, "phase":1.85, "hp":3, "breakable":false}
 		]},
-	{"id":"sudamerica-3", "name":"Mini-boss Skullbit", "hp":2, "motion":1, "shield":1,
-		"texture":preload("res://assets/level_3_boss.png"),
-		"hurt":{"texture":preload("res://assets/level_3_boss_dolor.png"), "fps":12.0,
-			"src":[Rect2(0, 0, 543, 724), Rect2(543, 0, 543, 724), Rect2(1086, 0, 543, 724), Rect2(1629, 0, 543, 724)],
-			"anchors":[Rect2(102, 71, 385, 589), Rect2(627, 71, 383, 590), Rect2(1148, 70, 387, 589), Rect2(1688, 71, 385, 589)]},
-		"death":{"texture":preload("res://assets/level_3_boss_muerte.png"), "fps":8.0,
-			"src":[Rect2(0, 0, 470, 724), Rect2(470, 0, 510, 724), Rect2(980, 0, 618, 724), Rect2(1598, 0, 574, 724)],
-			"anchors":[Rect2(92, 140, 310, 483), Rect2(578, 152, 310, 483), Rect2(1128, 153, 310, 483), Rect2(1738, 152, 310, 483)]},
+	{"id":"sudamerica-3", "name":"Jefe de Colombia", "hp":2, "motion":1, "shield":1,
+		"texture":preload("res://assets/boss_colombia.png"),
+		"hurt":{"texture":preload("res://assets/boss_colombia_dolor.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 542, 724), Rect2(542, 0, 543, 724), Rect2(1085, 0, 544, 724), Rect2(1629, 0, 543, 724)],
+			"anchors":[Rect2(-12, 80, 600, 604), Rect2(530, 80, 600, 604), Rect2(1073, 92, 600, 604), Rect2(1609, 76, 600, 604)]},
+		"death":{"texture":preload("res://assets/boss_colombia_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 418, 724), Rect2(418, 0, 436, 724), Rect2(854, 0, 455, 724), Rect2(1309, 0, 487, 724), Rect2(1796, 0, 376, 724)],
+			"anchors":[Rect2(-16, 184, 452, 456), Rect2(422, 184, 452, 456), Rect2(830, 184, 452, 456), Rect2(1293, 200, 452, 456), Rect2(1747, 251, 452, 456)]},
 		"zone":"Colombia", "color":Color("#62413b"), "music":"levels_a", "threat":3, "reloads":1,
 		"walls":[
 			{"x":225.0, "speed":1.165, "amp":91.0, "gap":74.0, "phase":0.4, "hp":2, "breakable":true},
 			{"x":390.0, "speed":1.445, "amp":91.0, "gap":74.0, "phase":1.85, "hp":3, "breakable":false},
 			{"x":555.0, "speed":1.725, "amp":91.0, "gap":74.0, "phase":3.3, "hp":3, "breakable":true}
 		]},
-	{"id":"sudamerica-4", "name":"Centinela blindado", "hp":3, "motion":2, "shield":1,
-		"texture":preload("res://assets/level_4_boss.png"),
-		"hurt":{"texture":preload("res://assets/level_4_boss_dolor.png"), "fps":12.0,
-			"src":[Rect2(0, 0, 579, 724), Rect2(579, 0, 518, 724), Rect2(1097, 0, 538, 724), Rect2(1635, 0, 537, 724)],
-			"anchors":[Rect2(64, 104, 552, 568), Rect2(615, 104, 552, 568), Rect2(1113, 108, 552, 568), Rect2(1667, 108, 552, 568)]},
-		"death":{"texture":preload("res://assets/level_4_boss_muerte.png"), "fps":8.0,
-			"src":[Rect2(0, 0, 517, 724), Rect2(517, 0, 571, 724), Rect2(1088, 0, 548, 724), Rect2(1636, 0, 536, 724)],
-			"anchors":[Rect2(32, 188, 452, 464), Rect2(621, 192, 452, 464), Rect2(1176, 184, 452, 464), Rect2(1685, 251, 452, 464)]},
+	{"id":"sudamerica-4", "name":"El General", "hp":2, "motion":2, "shield":1,
+		"texture":preload("res://assets/boss_venezuela_1.png"),
+		"hurt":{"texture":preload("res://assets/boss_venezuela_1_dolor.png"), "fps":12.0,
+			"src":[Rect2(0, 0, 544, 724), Rect2(544, 0, 546, 724), Rect2(1090, 0, 552, 724), Rect2(1642, 0, 530, 724)],
+			"anchors":[Rect2(0, 96, 536, 584), Rect2(548, 96, 536, 584), Rect2(1094, 92, 536, 584), Rect2(1654, 96, 536, 584)]},
+		"death":{"texture":preload("res://assets/boss_venezuela_1_muerte.png"), "fps":8.0,
+			"src":[Rect2(0, 0, 421, 724), Rect2(421, 0, 447, 724), Rect2(868, 0, 464, 724), Rect2(1332, 0, 453, 724), Rect2(1785, 0, 387, 724)],
+			"anchors":[Rect2(4, 160, 416, 452), Rect2(457, 140, 416, 452), Rect2(868, 160, 416, 452), Rect2(1328, 160, 416, 452), Rect2(1762, 165, 416, 452)]},
+		# Al morir El General entra El Mandatario, sin pasar por la victoria (ver "phases" arriba).
+		"phases":[
+			{"name":"El Mandatario", "hp":2, "motion":1, "shield":1,
+				"texture":preload("res://assets/boss_venezuela_2.png"),
+				"hurt":{"texture":preload("res://assets/boss_venezuela_2_dolor.png"), "fps":12.0,
+					"src":[Rect2(0, 0, 543, 724), Rect2(543, 0, 542, 724), Rect2(1085, 0, 543, 724), Rect2(1628, 0, 544, 724)],
+					"anchors":[Rect2(24, 112, 516, 604), Rect2(555, 112, 516, 604), Rect2(1097, 112, 516, 604), Rect2(1640, 100, 516, 604)]},
+				"death":{"texture":preload("res://assets/boss_venezuela_2_muerte.png"), "fps":8.0,
+					"src":[Rect2(0, 0, 407, 724), Rect2(407, 0, 463, 724), Rect2(870, 0, 450, 724), Rect2(1320, 0, 504, 724), Rect2(1824, 0, 348, 724)],
+					"anchors":[Rect2(36, 176, 384, 448), Rect2(415, 156, 384, 448), Rect2(870, 176, 384, 448), Rect2(1356, 200, 384, 448), Rect2(1823, 203, 384, 448)]}}
+		],
 		"zone":"Venezuela", "color":Color("#1b254f"), "music":"levels_b", "threat":4, "reloads":2,
 		"walls":[
 			{"x":225.0, "speed":1.27, "amp":98.0, "gap":68.0, "phase":0.4, "hp":2, "breakable":true},
@@ -99,7 +113,7 @@ const LIST := [
 #   "stage"  = nivel (índice 1.. de LIST)        "label"  = nombre del punto en el panel
 #   "pos"    = centro del punto en la imagen (px) "radius" = radio del punto en la imagen (px)
 #   "via"    = recodos de la ruta que llega desde el nodo anterior, en px de la imagen (opcional)
-# Provisional: las etapas de Sudamérica usan aún los cinco jefes originales.
+# Chile (diana de práctica) y Cuba (Boss Retro Rojo) conservan sus jefes provisionales.
 const WORLDS := [
 	{"id":"sudamerica", "name":"Mundo 1 · Campaña Sudamérica", "background":preload("res://assets/map_word_1.png"),
 		"nodes":[

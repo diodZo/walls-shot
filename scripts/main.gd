@@ -166,6 +166,7 @@ var kick := 0.0
 var status := "menu" # menu / map / briefing / play / dying / lose / win
 var enemy_hp := 1
 var enemy_max_hp := 1
+var phase := 0 # 0 = jefe principal de la etapa; 1.. = jefes de "phases", que entran al morir el anterior
 var enemy_y := LINE_Y
 var shield_open := true
 var notice := ""
@@ -459,6 +460,7 @@ func refresh_ui() -> void:
 	sound_button.text = "SONIDO (M): " + ("SÍ" if sound_enabled else "NO")
 
 func reset_stage() -> void:
+	phase = 0
 	walls.clear()
 	particles.clear()
 	bullet.clear()
@@ -470,7 +472,7 @@ func reset_stage() -> void:
 	focus_time = 0.0
 	pierce_next = 0
 	abilities_left = 0 if WEAPONS[equipped]["ability"] == "none" else 2
-	enemy_hp = int(stage()["hp"])
+	enemy_hp = int(enemy()["hp"])
 	enemy_max_hp = enemy_hp
 	hurt_time = -1.0
 	death_time = -1.0
@@ -488,6 +490,17 @@ func reset_stage() -> void:
 # Ficha de la etapa actual (scripts/stages.gd).
 func stage() -> Dictionary:
 	return STAGES[level - 1]
+
+# Jefe que se está combatiendo: el de la ficha o, tras derrotarlo, el de "phases" que corresponda.
+func enemy() -> Dictionary:
+	return stage() if phase == 0 else stage()["phases"][phase - 1]
+
+# Vida de todos los jefes de la etapa (recompensa).
+func stage_total_hp() -> int:
+	var total: int = int(stage()["hp"])
+	for extra in stage().get("phases", []):
+		total += int(extra["hp"])
+	return total
 
 func start_stage() -> void:
 	overlay_panel.hide()
@@ -708,8 +721,7 @@ func _process(delta: float) -> void:
 		death_time += dt
 		if death_frame() < 0:
 			death_time = -1.0
-			enemy_defeated = true
-			win_stage()
+			enemy_down()
 	notice_time = maxf(0.0, notice_time - dt)
 	if reload_time > 0.0:
 		reload_time = maxf(0.0, reload_time - dt)
@@ -721,7 +733,7 @@ func _process(delta: float) -> void:
 	if status == "play":
 		elapsed += dt
 		focus_time = maxf(0.0, focus_time - dt)
-		var profile: Dictionary = stage()
+		var profile: Dictionary = enemy()
 		var motion: int = int(profile["motion"])
 		enemy_y = LINE_Y + (sin(elapsed * 2.2) * 36.0 if motion == 1 else (sin(elapsed * 1.2) * 18.0 if motion == 2 else 0.0))
 		var shield: int = int(profile["shield"])
@@ -779,7 +791,7 @@ func move_bullet(dt: float) -> void:
 	if touches_x and touches_y:
 		if shield_open:
 			enemy_hp = maxi(0, enemy_hp - int(bullet["damage"]))
-			if stage()["hurt"] != null:
+			if enemy()["hurt"] != null:
 				hurt_time = 0.0
 			spawn_particles(Vector2(maxf(from_x, hit.position.x), bullet_y), Color("#ffe39d"), 22)
 			if enemy_hp > 0:
@@ -787,10 +799,10 @@ func move_bullet(dt: float) -> void:
 				impact(HITSTOP_ENEMY, SHAKE_ENEMY)
 			if enemy_hp <= 0:
 				bullet.clear()
-				if stage()["death"] != null:
+				if enemy()["death"] != null:
 					start_death()
 				else:
-					win_stage()
+					enemy_down()
 				return
 		else:
 			spawn_particles(Vector2(ENEMY_X - 75.0, bullet_y), Color("#87e4ff"), 10)
@@ -807,10 +819,10 @@ func move_bullet(dt: float) -> void:
 
 func enemy_hitbox() -> Rect2:
 	var half: Vector2
-	if stage()["texture"] != null:
+	if enemy()["texture"] != null:
 		half = enemy_sprite_rect().size * 0.5 * SPRITE_HITBOX_FILL
 	else:
-		half = stage()["hit"]
+		half = enemy()["hit"]
 	return Rect2(Vector2(ENEMY_X, enemy_y) - half, half * 2.0)
 
 # Los PNG traen márgenes transparentes: se usa solo el área opaca para dibujar y colisionar.
@@ -825,6 +837,29 @@ func sprite_region(tex: Texture2D) -> Rect2:
 			region = Rect2(used)
 	sprite_regions[tex] = region
 	return region
+
+# Jefe derrotado (tras su animación de muerte, si la tiene): entra el siguiente de "phases" o se gana la etapa.
+func enemy_down() -> void:
+	if phase < (stage().get("phases", []) as Array).size():
+		next_phase()
+	else:
+		enemy_defeated = true
+		win_stage()
+
+# Segundo jefe (o siguientes): misma partida, mismos muros y munición; solo cambia el enemigo.
+func next_phase() -> void:
+	phase += 1
+	status = "play"
+	enemy_hp = int(enemy()["hp"])
+	enemy_max_hp = enemy_hp
+	enemy_defeated = false
+	hurt_time = -1.0
+	shield_open = true
+	spawn_particles(Vector2(ENEMY_X, enemy_y), Color("#ffe39d"), 30)
+	play_sfx("reload_done")
+	notify("¡%s ENTRA EN COMBATE!" % str(enemy()["name"]).to_upper())
+	refresh_ui()
+	check_out_of_ammo() # si la última bala derribó al primero, sin cargadores se pierde
 
 func start_death() -> void:
 	status = "dying"
@@ -949,10 +984,10 @@ func frame_at(anim: Variant, t: float) -> int:
 	return frame if frame < (anim["src"] as Array).size() else -1
 
 func hurt_frame() -> int:
-	return frame_at(stage()["hurt"], hurt_time)
+	return frame_at(enemy()["hurt"], hurt_time)
 
 func death_frame() -> int:
-	return frame_at(stage()["death"], death_time)
+	return frame_at(enemy()["death"], death_time)
 
 func weapon_animation(kind: String) -> Variant:
 	return WEAPON_ANIMATIONS.get(int(WEAPONS[equipped]["sprite"]), {}).get(kind)
@@ -978,7 +1013,7 @@ func draw_sheet_frame(anim: Dictionary, frame: int, target: Rect2) -> void:
 	draw_texture_rect_region(tex, Rect2(origin, src.size * s), src)
 
 func enemy_sprite_rect() -> Rect2:
-	var region: Rect2 = sprite_region(stage()["texture"])
+	var region: Rect2 = sprite_region(enemy()["texture"])
 	var size: Vector2 = region.size * (ENEMY_SPRITE_BOX / maxf(region.size.x, region.size.y))
 	return Rect2(Vector2(ENEMY_X, enemy_y) - size * 0.5, size)
 
@@ -1017,13 +1052,13 @@ func win_stage() -> void:
 	var earned_stars := 3 if total_shots <= int(ceil(float(threshold) * 0.32)) else (2 if total_shots <= int(ceil(float(threshold) * 0.66)) else 1)
 	var key: String = str(stage()["id"])
 	stars[key] = max(int(stars.get(key, 0)), earned_stars)
-	var award: int = 110 + level * 80 + max(0, threshold - total_shots) * 25 + (int(stage()["hp"]) * 40)
+	var award: int = 110 + level * 80 + max(0, threshold - total_shots) * 25 + stage_total_hp() * 40
 	coins += award
 	score += award
 	unlocked = max(unlocked, mini(STAGES.size(), level + 1))
 	save_game()
 	# CONTINUAR vuelve al mapa, con el camino a la siguiente etapa ya abierto.
-	show_overlay("¡VICTORIA!", "Derrotaste a %s. Recompensa: %d monedas." % [str(stage()["name"]), award], "CONTINUAR", false)
+	show_overlay("¡VICTORIA!", "Derrotaste a %s. Recompensa: %d monedas." % [str(enemy()["name"]), award], "CONTINUAR", false)
 	# Medallas: bronce, plata y oro; las no conseguidas se ven apagadas.
 	overlay_medals[0].get_parent().visible = true
 	for i in range(overlay_medals.size()):
@@ -1191,13 +1226,13 @@ func draw_enemy() -> void:
 	if enemy_defeated:
 		return
 	if death_frame() >= 0:
-		draw_sheet_frame(stage()["death"], death_frame(), enemy_sprite_rect())
+		draw_sheet_frame(enemy()["death"], death_frame(), enemy_sprite_rect())
 		return
-	if stage()["texture"] != null:
-		var tex: Texture2D = stage()["texture"]
+	if enemy()["texture"] != null:
+		var tex: Texture2D = enemy()["texture"]
 		var frame: int = hurt_frame()
 		if frame >= 0:
-			draw_sheet_frame(stage()["hurt"], frame, enemy_sprite_rect())
+			draw_sheet_frame(enemy()["hurt"], frame, enemy_sprite_rect())
 		else:
 			draw_texture_rect_region(tex, enemy_sprite_rect(), sprite_region(tex))
 	else:

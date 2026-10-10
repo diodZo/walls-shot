@@ -44,9 +44,9 @@ godot --headless --path . --script res://tests/wallshot_test.gd
 Termina con código 0 si todo pasa. Cubre colisiones, armas, escudos, munición, progresión, guardado, animaciones y una campaña completa del nivel 1 al 5 jugada por un bot. Las pruebas guardan una copia de la partida guardada al empezar y la restauran al terminar.
 
 ## Añadir animaciones (sprite sheets)
-Las hojas son de 4 fotogramas en horizontal. Para integrar una nueva, calcula su alineación con el sprite base:
+Las hojas son de fotogramas en horizontal (4 por defecto; indica otro número con `hoja.png:N`, p. ej. las de muerte de 5). Para integrar una nueva, calcula su alineación con el sprite base:
 ```
-python tools/anchors.py assets <carpeta_salida> <base.png> <hoja1.png>[,<hoja2.png>]
+python tools/anchors.py assets <carpeta_salida> <base.png> <hoja1.png[:N]>[,<hoja2.png[:N]>]
 ```
 Requiere numpy y Pillow. El script imprime los `Rect2` listos para pegar en `"hurt"` o `"death"` de la etapa (`scripts/stages.gd`) o en `WEAPON_ANIMATIONS` (`scripts/main.gd`) y genera una vista previa para comprobar la alineación.
 
@@ -63,4 +63,4 @@ Los mundos están en `WORLDS` (`scripts/stages.gd`). Cada uno tiene nombre, una 
 
 Sobre los puntos de la imagen el juego solo dibuja su estado: anillo si está pendiente, medalla si está superada y candado si está bloqueada. El agente (`assets/player.png`) camina por la ruta y solo llega hasta la última etapa desbloqueada. Las medallas se guardan por el `"id"` de la etapa; las partidas de la versión anterior (por número de nivel) se convierten al cargar y las de etapas que ya no existen se descartan.
 
-Mundo 1 (`assets/map_word_1.png`): Chile, Argentina, Colombia, Venezuela y Cuba. Por ahora sus etapas usan los cinco jefes originales, y en el mapa suena el tema del menú.
+Mundo 1 (`assets/map_word_1.png`): Chile, Argentina, Colombia, Venezuela y Cuba. Argentina, Colombia y Venezuela tienen sus jefes (`assets/boss_*`); en Venezuela, al morir el primero entra el segundo (`"phases"` en la ficha). Chile (diana de práctica) y Cuba (Boss Retro Rojo) conservan los provisionales. En el mapa suena el tema del menú.
