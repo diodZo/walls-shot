@@ -50,6 +50,12 @@ func hit_center(game: Node) -> void:
 			break
 		game.move_bullet(0.033)
 
+func key(code: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.pressed = true
+	return event
+
 func fresh(game: Node, lvl: int, weapon: int) -> void:
 	game.level = lvl
 	game.owned = [0, 1, 2, 3]
@@ -338,8 +344,11 @@ func run_tests() -> void:
 	check(game.status == "menu" and game.overlay_logo.visible and not game.overlay_title.visible, "menú: placa WALLSHOT sobre el búnker")
 	await process_frame
 	game.level = 2
+	game.unlocked = maxi(game.unlocked, 2)
 	game.overlay_start.pressed.emit()
-	check(game.status == "briefing" and game.dossier.visible and not game.overlay_panel.visible, "JUGAR desde el menú abre el expediente")
+	check(game.status == "map" and game.world_map.visible and game.world_map.current_level() == 2 and not game.overlay_panel.visible, "JUGAR desde el menú abre el mapa sobre la etapa actual")
+	game._unhandled_input(key(KEY_ENTER))
+	check(game.status == "briefing" and game.dossier.visible and not game.world_map.visible, "ENTER en el mapa abre el expediente")
 	game.fire()
 	check(game.bullet.is_empty() and game.shots == 0, "no se dispara durante el expediente")
 	for i in 5:
@@ -389,8 +398,8 @@ func run_tests() -> void:
 	for medal in game.overlay_medals:
 		if medal.modulate == Color.WHITE:
 			lit += 1
-	check(game.status == "win" and game.overlay_medals[0].get_parent().visible and lit == int(game.stars["1"]), "victoria: medallas encendidas según estrellas (%d)" % lit)
-	game.stars["1"] = 3
+	check(game.status == "win" and game.overlay_medals[0].get_parent().visible and lit == int(game.stars["sudamerica-1"]), "victoria: medallas encendidas según estrellas (%d)" % lit)
+	game.stars["sudamerica-1"] = 3
 	game.refresh_ui()
 	check(game.level_box.get_item_icon(0) == game.MEDALS_SMALL[2], "selector de nivel: medalla de oro con 3 estrellas")
 	game.lose_stage()
@@ -567,6 +576,7 @@ func run_tests() -> void:
 	# --- Partida completa automática niveles 1..5 con el plasma ---
 	game.unlocked = 1
 	game.coins = 0
+	game.stars.clear() # la partida guardada del jugador puede traer medallas propias
 	fresh(game, 1, 3)
 	var cleared := 0
 	for lvl in range(1, 6):
@@ -589,11 +599,81 @@ func run_tests() -> void:
 		if game.status == "win":
 			cleared += 1
 			check(game.unlocked >= mini(5, lvl + 1), "nivel %d desbloquea el siguiente" % lvl)
-			check(game.overlay_start.pressed.is_connected(game.next_stage), "botón pasa a SIGUIENTE NIVEL")
+			check(game.overlay_start.text == "CONTINUAR" and not game.overlay_menu.visible, "victoria: botón CONTINUAR")
 	check(game.coins > 0 and game.stars.size() == cleared, "monedas y estrellas otorgadas")
 	game.overlay_start.pressed.emit()
-	check(game.level == 1 and game.status == "briefing", "tras nivel 5 vuelve al nivel 1 (con su expediente)")
+	var all_open := true
+	for i in game.world_map.node_count():
+		all_open = all_open and game.world_map.is_open(i)
+	check(game.status == "map" and game.world_map.current_level() == 5 and all_open, "tras la última etapa, CONTINUAR vuelve al mapa con todo abierto")
+
+	# --- Mapa del mundo ---
+	game.unlocked = 2
+	game.level = 1
+	game.open_map()
+	var wm: Control = game.world_map
+	check(game.status == "map" and wm.visible and wm.current_level() == 1 and wm.agent_pos == wm.node_pos(0), "mapa: el agente empieza sobre la etapa actual")
+	check(game.desired_music() == "menu", "mapa: suena el tema del menú")
+	check(game.restart_button.disabled and game.fire_button.disabled, "mapa: REINICIAR y DISPARAR desactivados")
+	var ui_hidden := true
+	for control in game.combat_ui:
+		ui_hidden = ui_hidden and not control.visible
+	check(ui_hidden and wm.size == Vector2(1000, 650), "mapa: pantalla completa, sin la barra de combate")
+	check(wm.node_label(0) == "Chile" and wm.node_label(4) == "Cuba", "mapa: puntos de Sudamérica")
+	game._unhandled_input(key(KEY_RIGHT))
+	check(wm.walking() and wm.cursor == 1, "mapa: → camina hacia la etapa siguiente")
+	game._unhandled_input(key(KEY_ENTER))
+	check(game.status == "map", "mapa: no se entra en una etapa mientras camina")
+	for i in 120:
+		wm._process(1.0 / 60.0)
+	check(not wm.walking() and wm.agent_pos.is_equal_approx(wm.node_pos(1)), "mapa: llega al punto siguiente siguiendo el camino")
+	game._unhandled_input(key(KEY_RIGHT))
+	check(not wm.walking() and wm.cursor == 1, "mapa: no avanza hacia una etapa bloqueada")
+	check(wm.facing == 1.0, "mapa: el agente mira a la derecha al avanzar")
+	game._unhandled_input(key(KEY_LEFT))
+	check(wm.walking() and wm.cursor == 0, "mapa: ← vuelve a la etapa anterior")
+	for i in 120:
+		wm._process(1.0 / 60.0)
+	check(wm.facing == -1.0, "mapa: el agente se voltea al volver hacia la izquierda")
+	var click := InputEventMouseButton.new()
+	click.pressed = true
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.position = wm.node_pos(1)
+	game._unhandled_input(click)
+	check(wm.walking() and wm.cursor == 1, "mapa: clic en un punto abierto camina hasta él")
+	for i in 120:
+		wm._process(1.0 / 60.0)
+	await process_frame # dibuja el mapa
+	game._unhandled_input(click)
+	check(game.status == "briefing" and game.level == 2, "mapa: clic en el punto actual entra en la etapa")
+	check(game.combat_ui.all(func(c): return c.visible), "al entrar en la etapa vuelve la barra de combate")
 	game.begin_stage()
+	game.open_map()
+	game._unhandled_input(key(KEY_ESCAPE))
+	check(game.status == "menu" and not wm.visible, "mapa: ESC vuelve al menú")
+	game.unlocked = 5
+	game.lose_stage()
+	game.overlay_menu.pressed.emit()
+	check(game.status == "map" and wm.visible, "game over: VOLVER AL MAPA")
+	# La ruta Argentina -> Colombia sube: ↑ avanza por dirección y → también, como respaldo.
+	game.level = 2
+	game.open_map()
+	game._unhandled_input(key(KEY_UP))
+	check(wm.walking() and wm.cursor == 2, "mapa: ↑ sigue la ruta hacia el norte")
+	for i in 300:
+		wm._process(1.0 / 60.0)
+	game._unhandled_input(key(KEY_RIGHT))
+	check(wm.walking() and wm.cursor == 3, "mapa: → avanza aunque la ruta no vaya a la derecha")
+	wm.enter_button.pressed.emit()
+	check(game.status == "map", "mapa: ENTRAR desactivado mientras camina")
+	for i in 300:
+		wm._process(1.0 / 60.0)
+	wm.enter_button.pressed.emit()
+	check(game.status == "briefing" and game.level == 4, "mapa: botón ENTRAR entra en la etapa")
+	game.begin_stage()
+	game.open_map()
+	wm.menu_button.pressed.emit()
+	check(game.status == "menu", "mapa: botón MENÚ PRINCIPAL")
 
 	# --- Guardado ---
 	var coins_before: int = game.coins
@@ -611,6 +691,16 @@ func run_tests() -> void:
 	check(other.equipped == 0 and other.coins == 300, "compra rechazada sin monedas")
 	other.choose_weapon(1)
 	check(other.equipped == 1 and other.coins == 50 and other.owned.has(1), "compra de pistola mejorada")
+
+	# --- Partida guardada de la versión 1: medallas por número de nivel ---
+	var legacy_file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	legacy_file.store_string(JSON.stringify({"version":1, "coins":10, "unlocked":4, "level":3, "stars":{"1":2, "3":3, "9":1, "etapa-borrada":3}}))
+	legacy_file.close()
+	var legacy: Node = load("res://scenes/main.tscn").instantiate()
+	root.add_child(legacy)
+	await process_frame
+	check(legacy.stars.get("sudamerica-1") == 2 and legacy.stars.get("sudamerica-3") == 3 and legacy.unlocked == 4 and legacy.level == 3 and legacy.stars.size() == 2, "partida v1: medallas convertidas a id de etapa; las de etapas inexistentes se descartan")
+	legacy.queue_free()
 
 	# --- Render: forzar varios frames reales con partículas y aviso ---
 	game.spawn_particles(Vector2(500, 200), Color.WHITE, 50)

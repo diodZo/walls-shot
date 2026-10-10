@@ -11,7 +11,10 @@ const PISTOL_TEXTURE := preload("res://assets/pistol.png")
 const SHOTGUN_TEXTURE := preload("res://assets/shotgun.png")
 const PLASMA_TEXTURE := preload("res://assets/plasma.png")
 # Fichas de las etapas (enemigo, muros y ambientación); "level" es el índice 1.. de STAGES.
-const STAGES: Array = preload("res://scripts/stages.gd").LIST
+const STAGE_DATA := preload("res://scripts/stages.gd")
+const STAGES: Array = STAGE_DATA.LIST
+const WORLDS: Array = STAGE_DATA.WORLDS # mapa: etapas agrupadas por mundo
+const WorldMap := preload("res://scripts/world_map.gd")
 const WALL_WIDTH := 31.0
 const ENEMY_SPRITE_BOX := 130.0
 const SPRITE_HITBOX_FILL := 0.85
@@ -160,7 +163,7 @@ var focus_time := 0.0
 var pierce_next := 0
 var abilities_left := 2
 var kick := 0.0
-var status := "menu" # menu / play / dying / lose / win
+var status := "menu" # menu / map / briefing / play / dying / lose / win
 var enemy_hp := 1
 var enemy_max_hp := 1
 var enemy_y := LINE_Y
@@ -170,6 +173,7 @@ var notice_time := 0.0
 var fire_button: Button
 var reload_button: Button
 var ability_button: Button
+var restart_button: Button
 var overlay_panel: PanelContainer
 var overlay_title: Label
 var overlay_message: Label
@@ -200,6 +204,8 @@ var overlay_medals: Array[TextureRect] = []
 var ammo_slots: Array[TextureRect] = []
 var reload_slots: Array[TextureRect] = []
 var dossier: Control
+var world_map: Control # mapa del mundo (scripts/world_map.gd)
+var combat_ui: Array[Control] = [] # controles bajo el escenario; el mapa (pantalla completa) los oculta
 var briefed_level := 0 # último nivel cuyo expediente ya se mostró (0 = ninguno)
 var briefing_time := 0.0
 
@@ -220,7 +226,7 @@ func _ready() -> void:
 	theme = build_theme()
 	build_ui()
 	reset_stage()
-	show_overlay("", "Atraviesa los muros móviles y vence a los cinco objetivos.", "JUGAR", false)
+	show_overlay("", "Atraviesa los muros móviles y vence a todos los objetivos.", "JUGAR", false)
 	set_process(true)
 
 # Tema común de la interfaz: botones metálicos con letras doradas y paneles de chapa (9-slice).
@@ -281,22 +287,25 @@ func build_ui() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	backdrop.add_theme_stylebox_override("panel", ui_box(UI_TEX["panel_small"], Vector2(40, 22), Vector2.ZERO))
 	add_child(backdrop)
+	combat_ui.append(backdrop)
 	var bar := HBoxContainer.new()
 	bar.position = Vector2(28, 482)
 	bar.size = Vector2(944, 45)
 	bar.add_theme_constant_override("separation", 8)
 	add_child(bar)
+	combat_ui.append(bar)
 	fire_button = make_button("DISPARAR", Callable(self, "fire"), bar)
 	reload_button = make_button("RECARGAR (R)", Callable(self, "reload_weapon"), bar)
 	ability_button = make_button("HABILIDAD (E)", Callable(self, "special"), bar)
-	make_button("REINICIAR", Callable(self, "start_stage"), bar)
-	make_button("MENÚ", Callable(self, "go_menu"), bar)
+	restart_button = make_button("REINICIAR", Callable(self, "start_stage"), bar)
+	make_button("MAPA", Callable(self, "open_map"), bar)
 	# HUD en pantalla de fósforo: balas del cargador, cargadores de reserva y datos de la partida.
 	var hud_panel := PanelContainer.new()
 	hud_panel.position = Vector2(28, 532)
 	hud_panel.size = Vector2(944, 44)
 	hud_panel.add_theme_stylebox_override("panel", ui_box(UI_TEX["hud_bar"], Vector2(24, 13), Vector2(22, 6)))
 	add_child(hud_panel)
+	combat_ui.append(hud_panel)
 	var hud_row := HBoxContainer.new()
 	hud_row.add_theme_constant_override("separation", 14)
 	hud_panel.add_child(hud_row)
@@ -320,6 +329,7 @@ func build_ui() -> void:
 	selectors.size = Vector2(912, 45)
 	selectors.add_theme_constant_override("separation", 12)
 	add_child(selectors)
+	combat_ui.append(selectors)
 	var weapons_label := Label.new()
 	weapons_label.text = "ARSENAL"
 	selectors.add_child(weapons_label)
@@ -337,6 +347,18 @@ func build_ui() -> void:
 	selectors.add_child(level_box)
 	level_box.item_selected.connect(choose_level)
 	sound_button = make_button("", Callable(self, "toggle_sound"), selectors)
+	# Mapa del mundo sobre el escenario; los clics y teclas le llegan desde _unhandled_input.
+	world_map = WorldMap.new()
+	world_map.position = Vector2.ZERO
+	world_map.size = Vector2(WIDTH, 650.0) # pantalla completa: imagen del mundo + panel
+	world_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	world_map.medal_icons = MEDALS_SMALL
+	world_map.medal_large = MEDALS
+	world_map.panel_box = ui_box(UI_TEX["panel_large"], Vector2(48, 34), Vector2(44, 30))
+	world_map.stage_chosen.connect(enter_stage)
+	world_map.menu_requested.connect(go_menu)
+	world_map.hide()
+	add_child(world_map)
 	overlay_panel = PanelContainer.new()
 	overlay_panel.position = Vector2(210, 50)
 	overlay_panel.size = Vector2(580, 315)
@@ -364,8 +386,8 @@ func build_ui() -> void:
 	overlay_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	overlay_message.custom_minimum_size = Vector2(480, 60)
 	layout.add_child(overlay_message)
-	overlay_start = make_button("JUGAR", Callable(self, "start_stage"), layout, true)
-	overlay_menu = make_button("MENÚ PRINCIPAL", Callable(self, "go_menu"), layout, true)
+	overlay_start = make_button("JUGAR", Callable(self, "on_overlay_start"), layout, true)
+	overlay_menu = make_button("VOLVER AL MAPA", Callable(self, "open_map"), layout, true)
 	for button in [overlay_start, overlay_menu]:
 		button.custom_minimum_size = Vector2(260, 45)
 		button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -413,6 +435,8 @@ func refresh_ui() -> void:
 	fire_button.disabled = status != "play" or not bullet.is_empty() or reload_time > 0.0
 	reload_button.disabled = status != "play" or reload_time > 0.0 or reloads_left <= 0 or not bullet.is_empty()
 	ability_button.disabled = status != "play" or abilities_left <= 0 or weapon["ability"] == "none" or not bullet.is_empty()
+	# Fuera de una etapa no hay nada que reiniciar (en el mapa se entra eligiendo un punto).
+	restart_button.disabled = status == "menu" or status == "map"
 	weapon_box.clear()
 	for i in range(WEAPONS.size()):
 		var info: Dictionary = WEAPONS[i]
@@ -424,7 +448,7 @@ func refresh_ui() -> void:
 	level_box.clear()
 	for i in range(1, STAGES.size() + 1):
 		# Medalla según la mejor puntuación en estrellas del nivel (antes era un emoji que podía no verse).
-		var best: int = clampi(int(stars.get(str(i), 0)), 0, 3)
+		var best: int = clampi(int(stars.get(str(STAGES[i - 1]["id"]), 0)), 0, 3)
 		var label: String = "Nivel %d" % i + (" (bloqueado)" if i > unlocked else "")
 		if best > 0:
 			level_box.add_icon_item(MEDALS_SMALL[best - 1], label, i)
@@ -466,11 +490,9 @@ func stage() -> Dictionary:
 	return STAGES[level - 1]
 
 func start_stage() -> void:
-	if overlay_start.pressed.is_connected(next_stage):
-		overlay_start.pressed.disconnect(next_stage)
-	if not overlay_start.pressed.is_connected(start_stage):
-		overlay_start.pressed.connect(start_stage)
 	overlay_panel.hide()
+	world_map.hide()
+	set_combat_ui(true)
 	# Nivel nuevo (o recién llegado del menú): primero el expediente del objetivo. Reintentar no lo repite.
 	if level != briefed_level:
 		status = "briefing"
@@ -502,14 +524,45 @@ func go_menu() -> void:
 	status = "menu"
 	briefed_level = 0
 	dossier.hide()
+	world_map.hide()
+	set_combat_ui(true)
 	reset_stage()
-	show_overlay("", "Elige nivel y arma. Gana monedas para desbloquear el arsenal.", "JUGAR", false)
+	show_overlay("", "Recorre el mapa y elige tu arma. Gana monedas para desbloquear el arsenal.", "JUGAR", false)
+
+# Mapa del mundo de la etapa actual, con el agente sobre ella.
+func open_map() -> void:
+	status = "map"
+	overlay_panel.hide()
+	dossier.hide()
+	reset_stage()
+	world_map.open(world_of(level), STAGES, unlocked, stars, level, coins)
+	set_combat_ui(false)
+
+func set_combat_ui(shown: bool) -> void:
+	for control in combat_ui:
+		control.visible = shown
+
+func world_of(stage_level: int) -> Dictionary:
+	for world in WORLDS:
+		for node in world["nodes"]:
+			if int(node["stage"]) == stage_level:
+				return world
+	return WORLDS[0]
+
+# Etapa elegida en el mapa: pasa por el expediente si no se ha visto.
+func enter_stage(stage_level: int) -> void:
+	level = stage_level
+	save_game()
+	start_stage()
+
+# Botón principal del panel: JUGAR (menú) y CONTINUAR (victoria) llevan al mapa; REINTENTAR repite la etapa.
+func on_overlay_start() -> void:
+	if status == "menu" or status == "win":
+		open_map()
+	else:
+		start_stage()
 
 func show_overlay(title: String, message: String, button_text: String, show_menu: bool = true) -> void:
-	if overlay_start.pressed.is_connected(next_stage):
-		overlay_start.pressed.disconnect(next_stage)
-	if not overlay_start.pressed.is_connected(start_stage):
-		overlay_start.pressed.connect(start_stage)
 	overlay_panel.show()
 	overlay_title.text = title
 	overlay_message.text = message
@@ -604,6 +657,12 @@ func special() -> void:
 	refresh_ui()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if status == "map":
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
+			toggle_sound()
+		else:
+			world_map.handle_input(event)
+		return
 	if status == "briefing":
 		var key_go: bool = event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_SPACE or event.keycode == KEY_ENTER)
 		var click_go: bool = event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
@@ -806,8 +865,8 @@ func toggle_sound() -> void:
 # Tema que corresponde al estado actual del juego.
 func desired_music() -> String:
 	match status:
-		"menu":
-			return "menu"
+		"menu", "map":
+			return "menu" # provisional: el mapa usa el tema del menú hasta tener uno propio
 		"briefing":
 			return "briefing"
 		"play", "dying":
@@ -956,29 +1015,20 @@ func win_stage() -> void:
 	play_sfx("victory")
 	var threshold: int = int(WEAPONS[equipped]["ammo"])
 	var earned_stars := 3 if total_shots <= int(ceil(float(threshold) * 0.32)) else (2 if total_shots <= int(ceil(float(threshold) * 0.66)) else 1)
-	stars[str(level)] = max(int(stars.get(str(level), 0)), earned_stars)
+	var key: String = str(stage()["id"])
+	stars[key] = max(int(stars.get(key, 0)), earned_stars)
 	var award: int = 110 + level * 80 + max(0, threshold - total_shots) * 25 + (int(stage()["hp"]) * 40)
 	coins += award
 	score += award
 	unlocked = max(unlocked, mini(STAGES.size(), level + 1))
 	save_game()
-	show_overlay("¡VICTORIA!", "Derrotaste a %s. Recompensa: %d monedas." % [str(stage()["name"]), award], "SIGUIENTE NIVEL" if level < STAGES.size() else "VOLVER AL NIVEL 1")
+	# CONTINUAR vuelve al mapa, con el camino a la siguiente etapa ya abierto.
+	show_overlay("¡VICTORIA!", "Derrotaste a %s. Recompensa: %d monedas." % [str(stage()["name"]), award], "CONTINUAR", false)
 	# Medallas: bronce, plata y oro; las no conseguidas se ven apagadas.
 	overlay_medals[0].get_parent().visible = true
 	for i in range(overlay_medals.size()):
 		overlay_medals[i].modulate = Color.WHITE if i < earned_stars else Color(0.25, 0.25, 0.25, 0.7)
-	overlay_start.pressed.disconnect(start_stage)
-	overlay_start.pressed.connect(next_stage)
 	refresh_ui()
-
-func next_stage() -> void:
-	if overlay_start.pressed.is_connected(next_stage):
-		overlay_start.pressed.disconnect(next_stage)
-	if not overlay_start.pressed.is_connected(start_stage):
-		overlay_start.pressed.connect(start_stage)
-	level = level + 1 if level < STAGES.size() else 1
-	save_game()
-	start_stage()
 
 func lose_stage() -> void:
 	status = "lose"
@@ -993,6 +1043,8 @@ func notify(message: String) -> void:
 func _draw() -> void:
 	# Sacudida: solo el escenario se desplaza (los controles de UI son nodos hijos y no se ven afectados).
 	# El fondo y el suelo se extienden SHAKE_MAX px para que no aparezcan bordes vacíos.
+	if status == "map":
+		return # el mapa (world_map) se dibuja a sí mismo encima
 	var offset := Vector2.ZERO
 	if shake > 0.0:
 		offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * minf(shake, SHAKE_MAX)
@@ -1160,7 +1212,7 @@ func draw_enemy() -> void:
 		draw_rect(Rect2(853, 118, 125 * ratio, 10), Color("#f48979"))
 
 func save_game() -> void:
-	var payload := {"version":1, "coins":coins, "score":score, "level":level, "unlocked":unlocked, "owned":owned, "equipped":equipped, "stars":stars, "sound":sound_enabled}
+	var payload := {"version":2, "coins":coins, "score":score, "level":level, "unlocked":unlocked, "owned":owned, "equipped":equipped, "stars":stars, "sound":sound_enabled}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(payload))
@@ -1190,4 +1242,12 @@ func load_game() -> void:
 	sound_enabled = bool(data.get("sound", true))
 	var ratings: Variant = data.get("stars", {})
 	if typeof(ratings) == TYPE_DICTIONARY:
-		stars = ratings
+		stars = {}
+		for key in ratings:
+			var id: String = str(key)
+			# Partidas de la versión 1: la clave era el número de nivel; ahora es el "id" de la etapa.
+			if id.is_valid_int() and int(id) >= 1 and int(id) <= STAGES.size():
+				id = str(STAGES[int(id) - 1]["id"])
+			# Las medallas de etapas que ya no existen se descartan.
+			if STAGES.any(func(s): return str(s["id"]) == id):
+				stars[id] = clampi(int(ratings[key]), 0, 3)

@@ -13,6 +13,7 @@ Proyecto nativo Godot 4 basado en las mecánicas de WALLSHOT 6.0 HTML5.
 - E: habilidad del arma.
 - M o botón SONIDO: activar/desactivar el sonido (se guarda).
 - Botones y menús: selección de armas, compra y selección de niveles.
+- Mapa: flechas (o WASD) para caminar entre etapas, ENTER, ESPACIO o clic sobre el punto actual para entrar, clic en otro punto para ir hasta él y ESC para volver al menú. El botón MAPA abandona la etapa y vuelve al mapa.
 
 ## Incluido
 - Cinco niveles, muros móviles y destructibles, sprite pixel art.
@@ -54,3 +55,12 @@ Este proyecto es una migración editable, no una conversión 1:1 de cada efecto 
 
 ## Etapas
 Cada etapa es una ficha en `scripts/stages.gd`: enemigo (nombre, vida, movimiento, escudo, sprite y animaciones), muros (posición, velocidad, recorrido, abertura, fase, resistencia y si se pueden romper), cargadores, música, color de fondo, zona y nivel de amenaza del expediente. El orden de la lista es el orden de juego; para añadir una etapa basta con otra entrada. Las pruebas validan que cada ficha tenga todos los campos.
+
+## Mundos y mapa
+El flujo es menú → mapa → expediente → etapa → mapa. El mapa ocupa toda la ventana: a la izquierda la imagen del mundo y a la derecha un panel con la etapa seleccionada (país, objetivo, estado, medallas) y los botones ENTRAR y MENÚ PRINCIPAL. La barra de combate se oculta mientras tanto.
+
+Los mundos están en `WORLDS` (`scripts/stages.gd`). Cada uno tiene nombre, una imagen cuadrada (`"background"`, que ya trae dibujados la ruta, los puntos y sus nombres) y una lista de nodos con la etapa (`"stage"`), el nombre del punto (`"label"`), su centro y radio en píxeles de la imagen (`"pos"`, `"radius"`) y los recodos de la ruta desde el nodo anterior (`"via"`). Para añadir un continente: su imagen en `assets/` y otra entrada en `WORLDS` con las coordenadas medidas sobre la imagen.
+
+Sobre los puntos de la imagen el juego solo dibuja su estado: anillo si está pendiente, medalla si está superada y candado si está bloqueada. El agente (`assets/player.png`) camina por la ruta y solo llega hasta la última etapa desbloqueada. Las medallas se guardan por el `"id"` de la etapa; las partidas de la versión anterior (por número de nivel) se convierten al cargar y las de etapas que ya no existen se descartan.
+
+Mundo 1 (`assets/map_word_1.png`): Chile, Argentina, Colombia, Venezuela y Cuba. Por ahora sus etapas usan los cinco jefes originales, y en el mapa suena el tema del menú.
